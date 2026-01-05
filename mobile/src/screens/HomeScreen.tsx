@@ -13,12 +13,32 @@ export default function HomeScreen() {
       <Text style={styles.title}>FlowBuddy</Text>
       <Text style={styles.subtitle}>Supportive Autonomy starts with a quick brain dump.</Text>
 
-      <TouchableOpacity style={[styles.button, styles.primary]} onPress={() => navigation.navigate("BrainDump")}>
+      <TouchableOpacity
+        style={[styles.button, styles.primary]}
+        onPress={() => navigation.navigate("BrainDump")}
+      >
         <Text style={styles.buttonText}>Brain Dump</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.button, styles.secondary]} onPress={() => {}}>
-        <Text style={[styles.buttonText, styles.secondaryText]}>New Resolution (soon)</Text>
+      <TouchableOpacity
+        style={[styles.button, styles.secondary]}
+        onPress={() => navigation.navigate("DraftPlans")}
+      >
+        <Text style={[styles.buttonText, styles.secondaryText]}>Draft Plans</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.button, styles.secondary]}
+        onPress={() => navigation.navigate("MyWeek")}
+      >
+        <Text style={[styles.buttonText, styles.secondaryText]}>My Week</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.button, styles.secondary]}
+        onPress={() => navigation.navigate("ResolutionCreate")}
+      >
+        <Text style={[styles.buttonText, styles.secondaryText]}>New Resolution</Text>
       </TouchableOpacity>
     </View>
   );
@@ -46,7 +66,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 12,
     alignItems: "center",
   },
   primary: {

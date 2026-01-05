@@ -95,6 +95,29 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
     -d '{"weeks":8}'
   ```
 - The decomposer persists the outline inside `Resolution.metadata_json["plan_v1"]` and stores Week-1 tasks in the `tasks` table marked with `{"draft": true, "source": "decomposer_v1"}` so they can be safely reviewed before activation.
+- Approval (Ticket 7) is explicit:
+  - Use `POST /resolutions/<resolution_id>/approve` with `decision="accept"` to activate tasks and set the resolution status to `active`.
+  - Use `decision="reject"` to keep everything in draft (logged for audit) or `decision="regenerate"` to request a fresh decomposition (then call `/decompose` with `regenerate=true`).
+  ```bash
+  # Accepting (can include optional task edits)
+  curl -X POST http://localhost:8000/resolutions/<resolution_id>/approve \
+    -H "Content-Type: application/json" \
+    -d '{
+      "user_id":"11111111-2222-3333-4444-555555555555",
+      "decision":"accept",
+      "task_edits":[
+        {"task_id":"<task_uuid>", "scheduled_day":"2024-01-03", "scheduled_time":"09:00", "duration_min":30}
+      ]
+    }'
+
+  # Rejecting (keeps status=draft, logs the decision)
+  curl -X POST http://localhost:8000/resolutions/<resolution_id>/approve \
+    -H "Content-Type: application/json" \
+    -d '{
+      "user_id":"11111111-2222-3333-4444-555555555555",
+      "decision":"reject"
+    }'
+  ```
 
 ## Testing
 - Default (SQLite) tests, Opik disabled:
