@@ -1,7 +1,7 @@
 """Task listing API routes."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -9,8 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import asc, nulls_last
 from sqlalchemy.orm import Session
 
-from app.api.schemas.task import TaskSummary
+from app.api.schemas.task import TaskSummary, TaskUpdateRequest, TaskUpdateResponse
 from app.db.deps import get_db
+from app.db.models.agent_action_log import AgentActionLog
 from app.db.models.task import Task
 from app.observability.metrics import log_metric
 from app.observability.tracing import trace
@@ -83,6 +84,91 @@ def list_tasks(
     )
 
     return [_serialize_task(task) for task in start_tasks]
+
+
+@router.patch("/tasks/{task_id}", response_model=TaskUpdateResponse, tags=["tasks"])
+def update_task_completion(
+    task_id: UUID,
+    payload: TaskUpdateRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+) -> TaskUpdateResponse:
+    """Mark a task complete or incomplete."""
+    task = db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    if task.user_id != payload.user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Task does not belong to user")
+
+    request_id = getattr(http_request.state, "request_id", None)
+    metadata: Dict[str, Any] = {
+        "route": f"/tasks/{task_id}",
+        "task_id": str(task_id),
+        "user_id": str(payload.user_id),
+        "completed": payload.completed,
+        "request_id": request_id,
+    }
+
+    changed = False
+    start_time = datetime.now(timezone.utc)
+    try:
+        with trace(
+            "task.complete",
+            metadata=metadata,
+            user_id=str(payload.user_id),
+            request_id=request_id,
+        ):
+            if task.completed != payload.completed:
+                changed = True
+                task.completed = payload.completed
+                task.completed_at = datetime.now(timezone.utc) if payload.completed else None
+
+                log = AgentActionLog(
+                    user_id=payload.user_id,
+                    action_type="task_completed" if payload.completed else "task_uncompleted",
+                    action_payload={
+                        "task_id": str(task.id),
+                        "completed": payload.completed,
+                        "resolution_id": str(task.resolution_id) if task.resolution_id else None,
+                        "request_id": request_id,
+                    },
+                    reason="Task completion toggled",
+                    undo_available=True,
+                )
+                db.add(log)
+
+            db.add(task)
+            db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+    latency_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+    log_metric(
+        "task.complete.success",
+        1,
+        metadata={"user_id": str(payload.user_id), "task_id": str(task_id)},
+    )
+    log_metric(
+        "task.complete.changed",
+        1 if changed else 0,
+        metadata={"user_id": str(payload.user_id), "task_id": str(task_id)},
+    )
+    log_metric(
+        "task.complete.latency_ms",
+        latency_ms,
+        metadata={"task_id": str(task_id)},
+    )
+
+    return TaskUpdateResponse(
+        id=task.id,
+        completed=bool(task.completed),
+        completed_at=task.completed_at,
+        request_id=request_id or "",
+    )
 
 
 def _is_draft_task(task: Task) -> bool:

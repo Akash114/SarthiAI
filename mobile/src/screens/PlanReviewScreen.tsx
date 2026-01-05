@@ -38,8 +38,6 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
   const { resolutionId, initialResolution } = route.params;
   const { userId, loading: userLoading } = useUserId();
   const [loading, setLoading] = useState(true);
-  const [planRequestId, setPlanRequestId] = useState<string | null>(null);
-  const [approvalRequestId, setApprovalRequestId] = useState<string | null>(null);
   const [plan, setPlan] = useState<{ title: string; type: string; duration_weeks: number | null; plan: { weeks: number; milestones: PlanMilestone[] } } | null>(initialResolution ? {
     title: initialResolution.title,
     type: initialResolution.type,
@@ -78,7 +76,7 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
       setError(null);
       setSuccess(null);
       try {
-        const { resolution, requestId } = await getResolution(resolutionId, uid);
+        const { resolution } = await getResolution(resolutionId, uid);
         const planData = resolution.plan;
         const hasDraftTasks = resolution.draft_tasks.length > 0;
         if (planData && hasDraftTasks && !regenerate) {
@@ -89,7 +87,6 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
             plan: planData,
           });
           setTasks(mapTasks(resolution.draft_tasks));
-          setPlanRequestId(requestId);
           return;
         }
 
@@ -100,7 +97,7 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
             body.weeks = defaultWeeks;
           }
           if (regenerate) body.regenerate = true;
-          const { result, requestId: decompId } = await decomposeResolution(resolutionId, body);
+          const { result } = await decomposeResolution(resolutionId, body);
           setPlan({
             title: result.title,
             type: result.type,
@@ -108,7 +105,6 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
             plan: result.plan,
           });
           setTasks(mapTasks(result.week_1_tasks));
-          setPlanRequestId(decompId);
         } else if (planData) {
           setPlan({
             title: resolution.title,
@@ -117,7 +113,6 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
             plan: planData,
           });
           setTasks(mapTasks(resolution.draft_tasks));
-          setPlanRequestId(requestId);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load plan.");
@@ -196,17 +191,15 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
     }
     setPending(true);
     setError(null);
-    setApprovalRequestId(null);
     try {
       const task_edits = buildTaskEdits();
-      const { result, requestId } = await approveResolution(resolutionId, {
+      const { result } = await approveResolution(resolutionId, {
         user_id: userId,
         decision: "accept",
         task_edits,
       });
 
       setSuccess(result);
-      setApprovalRequestId(requestId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to approve this plan right now.");
     } finally {
@@ -230,7 +223,6 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
     fetchPlan({ regenerate: true, userId });
   };
 
-  const debugRequestId = approvalRequestId || planRequestId || success?.request_id || null;
   const acceptDisabled = pending || userLoading || !userId || !plan || !tasks.length || !!success;
 
   if ((loading || userLoading) && !plan) {
@@ -342,12 +334,6 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
         </View>
       )}
 
-      {debugRequestId ? (
-        <View style={styles.debugCard}>
-          <Text style={styles.debugLabel}>Debug</Text>
-          <Text style={styles.debugValue}>request_id: {debugRequestId}</Text>
-        </View>
-      ) : null}
     </ScrollView>
   );
 }
@@ -475,22 +461,6 @@ const styles = StyleSheet.create({
   summaryMeta: {
     color: "#555",
     marginTop: 2,
-  },
-  debugCard: {
-    marginTop: 16,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#f4f6fb",
-    borderWidth: 1,
-    borderColor: "#dfe3eb",
-  },
-  debugLabel: {
-    fontWeight: "600",
-    color: "#555",
-  },
-  debugValue: {
-    marginTop: 4,
-    color: "#111",
   },
   center: {
     flex: 1,

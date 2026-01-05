@@ -14,7 +14,6 @@ export default function ResolutionsListScreen() {
   const [resolutions, setResolutions] = useState<ResolutionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [requestId, setRequestId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadResolutions = useCallback(async () => {
@@ -22,9 +21,8 @@ export default function ResolutionsListScreen() {
     setLoading(true);
     setError(null);
     try {
-      const { items, requestId: reqId } = await listResolutions(userId, "draft");
+      const { items } = await listResolutions(userId, "draft");
       setResolutions(items);
-      setRequestId(reqId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load drafts.");
     } finally {
@@ -96,12 +94,6 @@ export default function ResolutionsListScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         contentContainerStyle={styles.listContent}
       />
-      {requestId ? (
-        <View style={styles.debugCard}>
-          <Text style={styles.debugLabel}>Debug</Text>
-          <Text style={styles.debugValue}>request_id: {requestId}</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -166,18 +158,5 @@ const styles = StyleSheet.create({
   retryText: {
     color: "#1a73e8",
     fontWeight: "600",
-  },
-  debugCard: {
-    padding: 12,
-    borderTopWidth: 1,
-    borderColor: "#e6e9f2",
-  },
-  debugLabel: {
-    fontWeight: "600",
-    color: "#555",
-  },
-  debugValue: {
-    marginTop: 4,
-    color: "#111",
   },
 });

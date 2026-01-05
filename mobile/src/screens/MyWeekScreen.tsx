@@ -10,7 +10,7 @@ import {
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import type { RootStackParamList } from "../../types/navigation";
-import { listTasks, TaskItem } from "../api/tasks";
+import { listTasks, TaskItem, updateTaskCompletion } from "../api/tasks";
 import { useUserId } from "../state/user";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "MyWeek">;
@@ -26,8 +26,8 @@ export default function MyWeekScreen() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [requestId, setRequestId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const grouped = useMemo<TaskSection[]>(() => {
     const scheduled = tasks.filter((task) => !!task.scheduled_day);
@@ -47,9 +47,8 @@ export default function MyWeekScreen() {
     setLoading(true);
     setError(null);
     try {
-      const { tasks: list, requestId: reqId } = await listTasks(userId, { status: "active" });
+      const { tasks: list } = await listTasks(userId, { status: "active" });
       setTasks(list);
-      setRequestId(reqId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load tasks right now.");
     } finally {
@@ -65,16 +64,38 @@ export default function MyWeekScreen() {
   }, [userLoading, userId]);
 
   const renderItem = ({ item }: { item: TaskItem }) => (
-    <View style={styles.card}>
-      <Text style={styles.title}>{item.title}</Text>
-      <Text style={styles.meta}>
-        {item.scheduled_day ? item.scheduled_day : "Flexible"}
-        {item.scheduled_time ? ` · ${item.scheduled_time}` : ""}
-      </Text>
-      {item.duration_min ? <Text style={styles.meta}>{item.duration_min} min</Text> : null}
-      {item.completed ? <Text style={styles.badge}>Done</Text> : null}
-    </View>
+    <TouchableOpacity style={[styles.card, item.completed && styles.cardCompleted]} onPress={() => handleToggle(item)} disabled={!!updatingId}>
+      <View style={styles.row}>
+        <View style={[styles.checkbox, item.completed && styles.checkboxChecked]}>
+          {item.completed ? <Text style={styles.checkboxMark}>✓</Text> : null}
+        </View>
+        <View style={styles.taskContent}>
+          <Text style={[styles.title, item.completed && styles.completedText]}>{item.title}</Text>
+          <Text style={styles.meta}>
+            {item.scheduled_day ? item.scheduled_day : "Flexible"}
+            {item.scheduled_time ? ` · ${item.scheduled_time}` : ""}
+          </Text>
+          {item.duration_min ? <Text style={styles.meta}>{item.duration_min} min</Text> : null}
+        </View>
+      </View>
+    </TouchableOpacity>
   );
+
+  const handleToggle = async (task: TaskItem) => {
+    if (!userId || updatingId) return;
+    setUpdatingId(task.id);
+    setError(null);
+    try {
+      const { result } = await updateTaskCompletion(task.id, userId, !task.completed);
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, completed: result.completed } : t)),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update that task right now.");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   if (userLoading || (loading && !refreshing && !tasks.length)) {
     return (
@@ -122,12 +143,6 @@ export default function MyWeekScreen() {
         }}
         contentContainerStyle={styles.listContent}
       />
-      {requestId ? (
-        <View style={styles.debugCard}>
-          <Text style={styles.debugLabel}>Debug</Text>
-          <Text style={styles.debugValue}>request_id: {requestId}</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -154,24 +169,44 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     marginBottom: 10,
   },
+  cardCompleted: {
+    opacity: 0.6,
+  },
   title: {
     fontSize: 16,
     fontWeight: "600",
+  },
+  completedText: {
+    textDecorationLine: "line-through",
   },
   meta: {
     color: "#555",
     marginTop: 4,
   },
-  badge: {
-    marginTop: 6,
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: "#c8e6c9",
-    color: "#1b5e20",
-    fontWeight: "600",
-    fontSize: 12,
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#d0d4e2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  checkboxChecked: {
+    backgroundColor: "#1a73e8",
+    borderColor: "#1a73e8",
+  },
+  checkboxMark: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  taskContent: {
+    flex: 1,
   },
   center: {
     flex: 1,
@@ -204,19 +239,6 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: "600",
-    color: "#111",
-  },
-  debugCard: {
-    padding: 12,
-    borderTopWidth: 1,
-    borderColor: "#e6e9f2",
-  },
-  debugLabel: {
-    fontWeight: "600",
-    color: "#555",
-  },
-  debugValue: {
-    marginTop: 4,
     color: "#111",
   },
 });

@@ -82,10 +82,6 @@ export default function BrainDumpScreen() {
           {renderSignalList("Blockers", result.response.signals.blockers)}
           {renderSignalList("Resolution References", result.response.signals.resolution_refs)}
           {renderSignal("Intent", result.response.signals.intent_shift || "—")}
-
-          <Text style={styles.sectionTitle}>Debug</Text>
-          {renderSignal("Brain Dump ID", result.response.id)}
-          {renderSignal("X-Request-Id", result.requestId || "n/a")}
         </View>
       ) : null}
     </ScrollView>

@@ -27,7 +27,6 @@ export default function ResolutionCreateScreen() {
   const [duration, setDuration] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [requestId, setRequestId] = useState<string | null>(null);
 
   const trimmed = text.trim();
   const durationNumber = duration ? Number(duration) : undefined;
@@ -44,15 +43,13 @@ export default function ResolutionCreateScreen() {
 
     setLoading(true);
     setError(null);
-    setRequestId(null);
 
     try {
-      const { resolution, requestId: reqId } = await createResolution({
+      const { resolution } = await createResolution({
         user_id: userId,
         text: trimmed,
         duration_weeks: durationNumber,
       });
-      setRequestId(reqId);
       navigation.replace("PlanReview", { resolutionId: resolution.id, initialResolution: resolution });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create resolution. Please try again.");
@@ -108,12 +105,6 @@ export default function ResolutionCreateScreen() {
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Create</Text>}
       </TouchableOpacity>
 
-      {requestId ? (
-        <View style={styles.debugCard}>
-          <Text style={styles.debugLabel}>Debug</Text>
-          <Text style={styles.debugValue}>request_id: {requestId}</Text>
-        </View>
-      ) : null}
 
       <TouchableOpacity
         style={styles.linkButton}
@@ -186,22 +177,6 @@ const styles = StyleSheet.create({
   error: {
     marginTop: 12,
     color: "#c62828",
-  },
-  debugCard: {
-    marginTop: 20,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#f4f6fb",
-    borderWidth: 1,
-    borderColor: "#dfe3eb",
-  },
-  debugLabel: {
-    fontWeight: "600",
-    color: "#555",
-  },
-  debugValue: {
-    marginTop: 4,
-    color: "#111",
   },
   linkButton: {
     marginTop: 12,

@@ -13,6 +13,13 @@ export type TaskItem = {
   source: string;
 };
 
+export type TaskUpdateResponse = {
+  id: string;
+  completed: boolean;
+  completed_at: string | null;
+  request_id?: string;
+};
+
 type ListOptions = {
   status?: "active" | "draft" | "all";
   from?: string;
@@ -32,5 +39,21 @@ export async function listTasks(userId: string, options: ListOptions = {}): Prom
   return {
     tasks: data,
     requestId: response.headers.get("X-Request-Id"),
+  };
+}
+
+export async function updateTaskCompletion(
+  taskId: string,
+  userId: string,
+  completed: boolean,
+): Promise<{ result: TaskUpdateResponse; requestId: string | null }> {
+  const { data, response } = await apiRequest<TaskUpdateResponse>(`/tasks/${taskId}`, {
+    method: "PATCH",
+    body: { user_id: userId, completed },
+  });
+
+  return {
+    result: data,
+    requestId: data.request_id || response.headers.get("X-Request-Id"),
   };
 }
