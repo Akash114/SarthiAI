@@ -1,10 +1,14 @@
 """Schemas for resolution intake API."""
 from __future__ import annotations
 
-from typing import Literal, Optional
+from datetime import datetime
+from typing import Literal, Optional, List
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
+
+from app.api.schemas.decomposition import PlanPayload, DraftTaskPayload
+from app.api.schemas.approval import ApprovedTaskPayload
 
 
 class ResolutionCreateRequest(BaseModel):
@@ -29,4 +33,26 @@ class ResolutionResponse(BaseModel):
     type: Literal["habit", "project", "learning", "health", "finance", "other"]
     duration_weeks: Optional[int]
     status: Literal["draft"]
+    request_id: str
+
+
+class ResolutionSummary(BaseModel):
+    id: UUID
+    title: str
+    type: str
+    status: str
+    duration_weeks: Optional[int]
+    updated_at: datetime
+
+
+class ResolutionDetailResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    title: str
+    type: str
+    status: str
+    duration_weeks: Optional[int]
+    plan: Optional[PlanPayload] = None
+    draft_tasks: List[DraftTaskPayload] = Field(default_factory=list)
+    active_tasks: List[ApprovedTaskPayload] = Field(default_factory=list)
     request_id: str

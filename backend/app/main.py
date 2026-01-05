@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request
 
 from app.api.routes.brain_dump import router as brain_dump_router
 from app.api.routes.resolution import router as resolution_router
+from app.api.routes.task import router as task_router
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestIDMiddleware
@@ -15,6 +16,7 @@ app = FastAPI(title=settings.app_name, version="0.1.0")
 app.add_middleware(RequestIDMiddleware)
 app.include_router(brain_dump_router)
 app.include_router(resolution_router)
+app.include_router(task_router)
 
 
 @app.on_event("startup")
