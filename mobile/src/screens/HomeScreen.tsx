@@ -59,7 +59,7 @@ export default function HomeScreen() {
         style={[styles.button, styles.secondary]}
         onPress={() => navigation.navigate("SettingsPermissions")}
       >
-        <Text style={[styles.buttonText, styles.secondaryText]}>Settings & Permissions</Text>
+        <Text style={[styles.buttonText, styles.secondaryText]}>Settings</Text>
       </TouchableOpacity>
 
       <TouchableOpacity

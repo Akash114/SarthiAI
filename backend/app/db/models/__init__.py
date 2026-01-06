@@ -4,6 +4,7 @@ from app.db.models.brain_dump import BrainDump
 from app.db.models.resolution import Resolution
 from app.db.models.task import Task
 from app.db.models.user import User
+from app.db.models.user_preferences import UserPreferences
 
 __all__ = [
     "AgentActionLog",
@@ -11,4 +12,5 @@ __all__ = [
     "Resolution",
     "Task",
     "User",
+    "UserPreferences",
 ]

@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.db.models.resolution import Resolution
+from app.db.models.user_preferences import UserPreferences
 from app.services.weekly_planner import (
     get_weekly_plan_preview,
     persist_weekly_plan_preview,
@@ -26,6 +27,17 @@ logger = logging.getLogger(__name__)
 class JobRunResult:
     users_processed: int
     snapshots_written: int
+    skipped_due_to_preferences: int = 0
+
+
+@dataclass
+class PreferenceState:
+    coaching_paused: bool
+    weekly_plans_enabled: bool
+    interventions_enabled: bool
+
+
+DEFAULT_PREFS = PreferenceState(False, True, True)
 
 
 def _active_user_ids(db: Session) -> List[UUID]:
@@ -57,9 +69,16 @@ def run_weekly_plan_for_all_users(
     force: bool = False,
 ) -> JobRunResult:
     ids = _normalize_user_ids(user_ids, db)
+    prefs_map = _load_preferences_map(db, ids)
     users_processed = 0
     snapshots_written = 0
+    skipped = 0
     for uid in ids:
+        prefs = prefs_map.get(uid, DEFAULT_PREFS)
+        if prefs.coaching_paused or not prefs.weekly_plans_enabled:
+            skipped += 1
+            logger.debug("Skipping weekly plan for user %s due to preferences", uid)
+            continue
         try:
             created = run_weekly_plan_for_user(db, uid, force=force)
         except Exception:  # pragma: no cover - defensive guard
@@ -68,7 +87,7 @@ def run_weekly_plan_for_all_users(
         users_processed += 1
         if created:
             snapshots_written += 1
-    return JobRunResult(users_processed=users_processed, snapshots_written=snapshots_written)
+    return JobRunResult(users_processed=users_processed, snapshots_written=snapshots_written, skipped_due_to_preferences=skipped)
 
 
 def run_interventions_for_user(db: Session, user_id: UUID, *, force: bool = False) -> bool:
@@ -90,9 +109,16 @@ def run_interventions_for_all_users(
     force: bool = False,
 ) -> JobRunResult:
     ids = _normalize_user_ids(user_ids, db)
+    prefs_map = _load_preferences_map(db, ids)
     users_processed = 0
     snapshots_written = 0
+    skipped = 0
     for uid in ids:
+        prefs = prefs_map.get(uid, DEFAULT_PREFS)
+        if prefs.coaching_paused or not prefs.interventions_enabled:
+            skipped += 1
+            logger.debug("Skipping interventions for user %s due to preferences", uid)
+            continue
         try:
             created = run_interventions_for_user(db, uid, force=force)
         except Exception:  # pragma: no cover - defensive guard
@@ -101,7 +127,7 @@ def run_interventions_for_all_users(
         users_processed += 1
         if created:
             snapshots_written += 1
-    return JobRunResult(users_processed=users_processed, snapshots_written=snapshots_written)
+    return JobRunResult(users_processed=users_processed, snapshots_written=snapshots_written, skipped_due_to_preferences=skipped)
 
 
 def _normalize_user_ids(user_ids: Optional[Iterable[UUID]], db: Session) -> List[UUID]:
@@ -110,3 +136,21 @@ def _normalize_user_ids(user_ids: Optional[Iterable[UUID]], db: Session) -> List
     else:
         ids = list(dict.fromkeys(user_ids))
     return ids
+
+
+def _load_preferences_map(db: Session, user_ids: List[UUID]) -> dict[UUID, PreferenceState]:
+    if not user_ids:
+        return {}
+    rows = (
+        db.query(UserPreferences)
+        .filter(UserPreferences.user_id.in_(user_ids))
+        .all()
+    )
+    mapping: dict[UUID, PreferenceState] = {}
+    for row in rows:
+        mapping[row.user_id] = PreferenceState(
+            coaching_paused=bool(row.coaching_paused),
+            weekly_plans_enabled=bool(row.weekly_plans_enabled),
+            interventions_enabled=bool(row.interventions_enabled),
+        )
+    return mapping

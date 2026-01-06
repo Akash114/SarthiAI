@@ -17,4 +17,5 @@ class JobRunResponse(BaseModel):
     job: str
     users_processed: int
     snapshots_written: int
+    skipped_due_to_preferences: int
     request_id: str

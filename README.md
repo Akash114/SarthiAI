@@ -37,12 +37,21 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
    cd backend
    python -m uvicorn app.main:app --reload
    ```
-3. (Optional) Start the scheduler worker in another shell when `SCHEDULER_ENABLED=true`:
+3. Start the scheduler worker (only when `SCHEDULER_ENABLED=true`):
    ```bash
    cd backend
    python -m app.worker.scheduler_main
-   # or, if you've installed the project: flowbuddy-scheduler
+   # or, if installed as a package: flowbuddy-scheduler
    ```
+   The worker validates `WEEKLY_JOB_*` env vars at startup. If `SCHEDULER_ENABLED=false`, it logs a warning (“Scheduler worker started but SCHEDULER_ENABLED=false. No jobs will run.”) and exits without scheduling anything.
+
+### Scheduler Monitoring
+- Required env vars (see `.env.example`): `SCHEDULER_ENABLED`, `SCHEDULER_TIMEZONE`, `WEEKLY_JOB_DAY`, `WEEKLY_JOB_HOUR`, `WEEKLY_JOB_MINUTE`, `JOBS_RUN_ON_STARTUP`.
+- `GET /jobs` returns the configured schedule plus the job list (`weekly_plan_job`, `interventions_job`).
+- Each job run logs start/end with counts and emits metrics/traces (`jobs.weekly_plan`, `jobs.interventions`). Example log line:
+  ```
+  INFO | app.worker.scheduler_main | Job weekly_plan complete: users=12, snapshots=10, duration_ms=132.4
+  ```
 3. Run tests:
    ```bash
    cd backend
@@ -207,3 +216,13 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
   - `GET /jobs`: surfaces scheduler configuration (enabled flag, cron settings) for observability dashboards.
   - `POST /jobs/run-now`: triggers `weekly_plan` or `interventions` jobs synchronously when `DEBUG=true`. Body example: `{ "job": "weekly_plan", "force": false }`.
   - Use these endpoints for local smoke tests; production automation should invoke the standalone scheduler worker instead.
+
+## Preferences & Pause Controls
+- `GET /preferences?user_id=<uuid>` returns the current autonomy settings. Defaults: `coaching_paused=false`, `weekly_plans_enabled=true`, `interventions_enabled=true`.
+- `PATCH /preferences` with any subset (e.g., `{ "user_id": "...", "coaching_paused": true }`) updates settings and logs an `AgentActionLog` entry when values change.
+- Scheduler jobs automatically skip users when `coaching_paused=true` or the corresponding feature flag (`weekly_plans_enabled`, `interventions_enabled`) is off. Skipped counts appear in job logs/metrics.
+- Manual test flow:
+  1. Launch the backend (`uvicorn app.main:app --reload`) and scheduler worker (`python -m app.worker.scheduler_main`).
+  2. In the mobile app, open **Settings** from Home, toggle “Pause coaching” or the per-feature switches.
+  3. Inspect `GET /preferences` or the Settings screen footer to verify the `request_id` and persisted values.
+  4. Trigger `/jobs/run-now` or wait for the scheduler; logs show `skipped_due_to_preferences` when a user is paused/disabled.

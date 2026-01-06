@@ -15,6 +15,7 @@ from app.db.models.agent_action_log import AgentActionLog
 from app.db.models.resolution import Resolution
 from app.db.models.task import Task
 from app.db.models.user import User
+from app.db.models.user_preferences import UserPreferences
 from app.main import app
 
 
@@ -37,6 +38,7 @@ def client(monkeypatch):
     User.__table__.create(bind=engine)
     Resolution.__table__.create(bind=engine)
     Task.__table__.create(bind=engine)
+    UserPreferences.__table__.create(bind=engine)
     AgentActionLog.__table__.create(bind=engine)
 
     def override_get_db():
@@ -103,7 +105,9 @@ def test_jobs_config_and_run_now(client):
 
     resp = test_client.get("/jobs")
     assert resp.status_code == 200
-    assert "scheduler_enabled" in resp.json()
+    data = resp.json()
+    assert "scheduler_enabled" in data
+    assert len(data["jobs"]) == 2
 
     run_resp = test_client.post(
         "/jobs/run-now",
@@ -112,6 +116,7 @@ def test_jobs_config_and_run_now(client):
     assert run_resp.status_code == 200
     data = run_resp.json()
     assert data["users_processed"] >= 1
+    assert data["skipped_due_to_preferences"] == 0
     assert data["request_id"]
 
 
@@ -132,6 +137,7 @@ def test_jobs_run_now_forbidden_in_prod(monkeypatch):
     User.__table__.create(bind=engine)
     Resolution.__table__.create(bind=engine)
     Task.__table__.create(bind=engine)
+    UserPreferences.__table__.create(bind=engine)
     AgentActionLog.__table__.create(bind=engine)
 
     def override_get_db():

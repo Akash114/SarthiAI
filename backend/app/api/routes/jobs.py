@@ -24,16 +24,22 @@ router = APIRouter()
 @router.get("/jobs", tags=["jobs"])
 def get_jobs_config(request: Request) -> dict:
     request_id = getattr(request.state, "request_id", None)
-    with trace("jobs.config", metadata={"request_id": request_id}, request_id=request_id):
-        data = {
+    metadata = {"request_id": request_id}
+    with trace("jobs.config", metadata=metadata, request_id=request_id):
+        response = {
             "scheduler_enabled": settings.scheduler_enabled,
             "schedule": {
                 "timezone": settings.scheduler_timezone,
                 "weekly_day": settings.weekly_job_day,
                 "weekly_time": f"{settings.weekly_job_hour:02d}:{settings.weekly_job_minute:02d}",
             },
+            "jobs": [
+                {"id": "weekly_plan_job", "description": "Generate weekly plan snapshots"},
+                {"id": "interventions_job", "description": "Generate intervention snapshots"},
+            ],
         }
-    return {**data, "request_id": request_id or ""}
+    log_metric("jobs.config.success", 1, metadata={})
+    return {**response, "request_id": request_id or ""}
 
 
 @router.post("/jobs/run-now", response_model=JobRunResponse, tags=["jobs"])
@@ -70,6 +76,7 @@ def run_job_now(
         job=payload.job,
         users_processed=result["users_processed"],
         snapshots_written=result["snapshots_written"],
+        skipped_due_to_preferences=result.get("skipped_due_to_preferences", 0),
         request_id=request_id or "",
     )
 
@@ -80,11 +87,12 @@ def _run_weekly_job(db: Session, user_id, force: bool) -> dict:
             created = run_weekly_plan_for_user(db, user_id, force=force)
         except ValueError:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        return {"users_processed": 1, "snapshots_written": 1 if created else 0}
+        return {"users_processed": 1, "snapshots_written": 1 if created else 0, "skipped_due_to_preferences": 0}
     res = run_weekly_plan_for_all_users(db, force=force)
     return {
         "users_processed": res.users_processed,
         "snapshots_written": res.snapshots_written,
+        "skipped_due_to_preferences": res.skipped_due_to_preferences,
     }
 
 
@@ -94,9 +102,10 @@ def _run_intervention_job(db: Session, user_id, force: bool) -> dict:
             created = run_interventions_for_user(db, user_id, force=force)
         except ValueError:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        return {"users_processed": 1, "snapshots_written": 1 if created else 0}
+        return {"users_processed": 1, "snapshots_written": 1 if created else 0, "skipped_due_to_preferences": 0}
     res = run_interventions_for_all_users(db, force=force)
     return {
         "users_processed": res.users_processed,
         "snapshots_written": res.snapshots_written,
+        "skipped_due_to_preferences": res.skipped_due_to_preferences,
     }

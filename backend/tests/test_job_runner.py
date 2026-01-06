@@ -11,6 +11,7 @@ from app.db.models.agent_action_log import AgentActionLog
 from app.db.models.resolution import Resolution
 from app.db.models.task import Task
 from app.db.models.user import User
+from app.db.models.user_preferences import UserPreferences
 from app.services.job_runner import (
     run_interventions_for_all_users,
     run_interventions_for_user,
@@ -37,6 +38,7 @@ def _session():
     User.__table__.create(bind=engine)
     Resolution.__table__.create(bind=engine)
     Task.__table__.create(bind=engine)
+    UserPreferences.__table__.create(bind=engine)
     AgentActionLog.__table__.create(bind=engine)
     return TestingSession
 
@@ -77,6 +79,17 @@ def _seed_task(db_session, **kwargs):
         session.add(task)
         session.commit()
         return task
+    finally:
+        session.close()
+
+
+def _set_preferences(db_session, user_id, **values):
+    session = db_session()
+    try:
+        prefs = UserPreferences(user_id=user_id, **values)
+        session.add(prefs)
+        session.commit()
+        return prefs
     finally:
         session.close()
 
@@ -137,4 +150,57 @@ def test_intervention_job_runner_counts():
     assert run_interventions_for_user(session, user_id, force=True) is True
     logs = session.query(AgentActionLog).filter(AgentActionLog.action_type == "intervention_generated").all()
     assert len(logs) == 2
+    session.close()
+
+
+def test_job_runner_respects_preferences():
+    Session = _session()
+    active_user = _seed_user(Session)
+    paused_user = _seed_user(Session)
+    res_a = _seed_resolution(Session, active_user)
+    res_b = _seed_resolution(Session, paused_user)
+    today = date.today()
+    _seed_task(
+        Session,
+        user_id=active_user,
+        resolution_id=res_a.id,
+        title="Active",
+        scheduled_day=today,
+        metadata_json={"draft": False},
+        completed=False,
+    )
+    _seed_task(
+        Session,
+        user_id=paused_user,
+        resolution_id=res_b.id,
+        title="Paused",
+        scheduled_day=today,
+        metadata_json={"draft": False},
+        completed=False,
+    )
+    _set_preferences(
+        Session,
+        paused_user,
+        coaching_paused=True,
+        weekly_plans_enabled=True,
+        interventions_enabled=True,
+    )
+    _set_preferences(
+        Session,
+        active_user,
+        coaching_paused=False,
+        weekly_plans_enabled=True,
+        interventions_enabled=False,
+    )
+
+    session = Session()
+    weekly_result = run_weekly_plan_for_all_users(session)
+    assert weekly_result.skipped_due_to_preferences == 1
+    assert weekly_result.snapshots_written == 1
+    session.close()
+
+    session = Session()
+    intervention_result = run_interventions_for_all_users(session)
+    assert intervention_result.skipped_due_to_preferences == 2  # paused + disabled
+    assert intervention_result.snapshots_written == 0
     session.close()
