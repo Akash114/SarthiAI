@@ -11,6 +11,10 @@ export type RootStackParamList = {
   ResolutionCreate: undefined;
   WeeklyPlan: undefined;
   Interventions: undefined;
+  WeeklyPlanHistory: undefined;
+  WeeklyPlanHistoryDetail: { logId: string };
+  InterventionsHistory: undefined;
+  InterventionsHistoryDetail: { logId: string };
   PlanReview: {
     resolutionId: string;
     initialResolution?: ResolutionResponse;

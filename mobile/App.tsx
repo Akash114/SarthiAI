@@ -16,6 +16,10 @@ import SettingsPermissionsScreen from "./src/screens/SettingsPermissionsScreen";
 import AgentLogScreen from "./src/screens/AgentLogScreen";
 import WeeklyPlanScreen from "./src/screens/WeeklyPlanScreen";
 import InterventionsScreen from "./src/screens/InterventionsScreen";
+import WeeklyPlanHistoryScreen from "./src/screens/WeeklyPlanHistoryScreen";
+import WeeklyPlanHistoryDetailScreen from "./src/screens/WeeklyPlanHistoryDetailScreen";
+import InterventionsHistoryScreen from "./src/screens/InterventionsHistoryScreen";
+import InterventionsHistoryDetailScreen from "./src/screens/InterventionsHistoryDetailScreen";
 import type { RootStackParamList } from "./types/navigation";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -36,6 +40,22 @@ function App() {
         <Stack.Screen name="Dashboard" component={ResolutionDashboardScreen} options={{ title: "Dashboard" }} />
         <Stack.Screen name="WeeklyPlan" component={WeeklyPlanScreen} options={{ title: "Weekly Plan" }} />
         <Stack.Screen name="Interventions" component={InterventionsScreen} options={{ title: "Interventions" }} />
+        <Stack.Screen name="WeeklyPlanHistory" component={WeeklyPlanHistoryScreen} options={{ title: "History" }} />
+        <Stack.Screen
+          name="WeeklyPlanHistoryDetail"
+          component={WeeklyPlanHistoryDetailScreen}
+          options={{ title: "Weekly Plan Snapshot" }}
+        />
+        <Stack.Screen
+          name="InterventionsHistory"
+          component={InterventionsHistoryScreen}
+          options={{ title: "Intervention History" }}
+        />
+        <Stack.Screen
+          name="InterventionsHistoryDetail"
+          component={InterventionsHistoryDetailScreen}
+          options={{ title: "Intervention Snapshot" }}
+        />
         <Stack.Screen
           name="SettingsPermissions"
           component={SettingsPermissionsScreen}

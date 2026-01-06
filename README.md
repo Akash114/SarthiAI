@@ -166,6 +166,7 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
   - `GET /weekly-plan/preview?user_id=<uuid>`: deterministic look-ahead preview (no writes).
   - `POST /weekly-plan/run` with JSON `{"user_id":"<uuid>", "force": false}`: generates the plan, persists a snapshot inside `AgentActionLog`, and returns it. Set `force=true` to bypass dedupe if you need to re-run the same week manually.
   - `GET /weekly-plan/latest?user_id=<uuid>`: fetches the most recent stored snapshot (404 if none).
+  - `GET /weekly-plan/history?user_id=<uuid>&limit=20` lists recent snapshots; `GET /weekly-plan/history/{log_id}?user_id=<uuid>` returns the full stored payload.
   - Example curls:
     ```bash
     curl "http://127.0.0.1:8000/weekly-plan/preview?user_id=11111111-2222-3333-4444-555555555555"
@@ -177,6 +178,7 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
   - `GET /interventions/preview?user_id=<uuid>`: read-only preview.
   - `POST /interventions/run` with `{"user_id":"<uuid>", "force": false}`: generate + store snapshot (`force=true` bypasses dedupe).
   - `GET /interventions/latest?user_id=<uuid>`: retrieve the latest stored intervention card (404 if none).
+  - `GET /interventions/history?user_id=<uuid>` and `GET /interventions/history/{log_id}?user_id=<uuid>` expose the stored intervention snapshots.
   - Example curls:
     ```bash
     curl "http://127.0.0.1:8000/interventions/preview?user_id=11111111-2222-3333-4444-555555555555"

@@ -2,9 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getWeeklyPlanLatest, runWeeklyPlan, WeeklyPlanResponse } from "../api/weeklyPlan";
 import { useUserId } from "../state/user";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../../types/navigation";
+
+type WeeklyPlanNav = NativeStackNavigationProp<RootStackParamList, "WeeklyPlan">;
 
 export default function WeeklyPlanScreen() {
   const { userId, loading: userLoading } = useUserId();
+  const navigation = useNavigation<WeeklyPlanNav>();
   const [plan, setPlan] = useState<WeeklyPlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +72,12 @@ export default function WeeklyPlanScreen() {
       contentContainerStyle={styles.container}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchPlan(); }} />}
     >
-      <Text style={styles.title}>Weekly Plan</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>Weekly Plan</Text>
+        <TouchableOpacity style={styles.linkButton} onPress={() => navigation.navigate("WeeklyPlanHistory")}>
+          <Text style={styles.linkText}>History</Text>
+        </TouchableOpacity>
+      </View>
       {error ? (
         <View style={styles.errorBox}>
           <Text style={styles.error}>{error}</Text>
@@ -139,6 +150,19 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "600",
     color: "#111",
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  linkButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  linkText: {
+    color: "#1a73e8",
+    fontWeight: "600",
   },
   card: {
     borderRadius: 16,

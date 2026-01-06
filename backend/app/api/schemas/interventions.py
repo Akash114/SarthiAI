@@ -7,10 +7,6 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-class InterventionRunRequest(BaseModel):
-    user_id: UUID
-    force: bool = False
-
 class WeekWindowPayload(BaseModel):
     start: date
     end: date
@@ -40,4 +36,39 @@ class InterventionPreviewResponse(BaseModel):
     week: WeekWindowPayload
     slippage: SlippagePayload
     card: Optional[InterventionCard] = None
+    request_id: str
+
+
+class InterventionResponse(InterventionPreviewResponse):
+    pass
+
+
+class InterventionRunRequest(BaseModel):
+    user_id: UUID
+    force: bool = False
+
+
+class InterventionHistoryItem(BaseModel):
+    id: UUID
+    created_at: str
+    week_start: str
+    week_end: str
+    flagged: bool
+    reason: Optional[str]
+
+
+class InterventionHistoryResponse(BaseModel):
+    user_id: UUID
+    items: list[InterventionHistoryItem]
+    next_cursor: Optional[str]
+    request_id: str
+
+
+class InterventionHistoryDetailResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    created_at: str
+    week_start: str
+    week_end: str
+    snapshot: InterventionResponse
     request_id: str

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from time import perf_counter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.api.schemas.interventions import (
@@ -12,6 +13,10 @@ from app.api.schemas.interventions import (
     InterventionRunRequest,
     InterventionCard,
     SlippagePayload,
+    InterventionHistoryResponse,
+    InterventionHistoryItem,
+    InterventionHistoryDetailResponse,
+    InterventionResponse,
 )
 from app.db.deps import get_db
 from app.observability.metrics import log_metric
@@ -122,7 +127,81 @@ def interventions_latest(
     return _intervention_response_from_log(log)
 
 
-def _intervention_response_from_log(log: AgentActionLog) -> InterventionPreviewResponse:
+@router.get("/interventions/history", response_model=InterventionHistoryResponse, tags=["interventions"])
+def interventions_history(
+    request: Request,
+    user_id: UUID = Query(..., description="User ID"),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> InterventionHistoryResponse:
+    request_id = getattr(request.state, "request_id", None)
+    metadata = {"user_id": str(user_id), "request_id": request_id, "limit": limit}
+    start = perf_counter()
+    with trace("interventions.history", metadata=metadata, user_id=str(user_id), request_id=request_id):
+        logs = (
+            db.query(AgentActionLog)
+            .filter(
+                AgentActionLog.user_id == user_id,
+                AgentActionLog.action_type == "intervention_generated",
+            )
+            .order_by(desc(AgentActionLog.created_at), desc(AgentActionLog.id))
+            .limit(limit)
+            .all()
+        )
+
+    latency_ms = (perf_counter() - start) * 1000
+    log_metric("interventions.history.success", 1, metadata={"user_id": str(user_id)})
+    log_metric("interventions.history.count", len(logs), metadata={"user_id": str(user_id)})
+    log_metric("interventions.history.latency_ms", latency_ms, metadata={"user_id": str(user_id)})
+
+    items = [_intervention_history_item(log) for log in logs]
+    return InterventionHistoryResponse(
+        user_id=user_id,
+        items=items,
+        next_cursor=None,
+        request_id=request_id or "",
+    )
+
+
+@router.get(
+    "/interventions/history/{log_id}",
+    response_model=InterventionHistoryDetailResponse,
+    tags=["interventions"],
+)
+def interventions_history_item(
+    log_id: UUID,
+    request: Request,
+    user_id: UUID = Query(..., description="User ID"),
+    db: Session = Depends(get_db),
+) -> InterventionHistoryDetailResponse:
+    request_id = getattr(request.state, "request_id", None)
+    metadata = {"user_id": str(user_id), "log_id": str(log_id), "request_id": request_id}
+    start = perf_counter()
+    with trace("interventions.history_item", metadata=metadata, user_id=str(user_id), request_id=request_id):
+        log = db.get(AgentActionLog, log_id)
+        if not log:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snapshot not found")
+        if log.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Snapshot does not belong to user")
+
+    latency_ms = (perf_counter() - start) * 1000
+    log_metric("interventions.history_item.success", 1, metadata={"user_id": str(user_id)})
+    log_metric("interventions.history_item.latency_ms", latency_ms, metadata={"user_id": str(user_id)})
+
+    payload = log.action_payload or {}
+    snapshot = _intervention_response_from_log(log)
+    return InterventionHistoryDetailResponse(
+        id=log.id,
+        user_id=log.user_id,
+        created_at=log.created_at.isoformat() if log.created_at else "",
+        week_start=payload.get("week_start") or snapshot.week["start"],
+        week_end=payload.get("week_end") or snapshot.week["end"],
+        snapshot=snapshot,
+        request_id=request_id or "",
+    )
+
+
+def _intervention_response_from_log(log: AgentActionLog) -> InterventionResponse:
     payload = log.action_payload or {}
     week_payload = payload.get("week") or {
         "start": payload.get("week_start"),
@@ -135,10 +214,25 @@ def _intervention_response_from_log(log: AgentActionLog) -> InterventionPreviewR
         "completion_rate": 0.0,
         "missed_scheduled": 0,
     }
-    return InterventionPreviewResponse(
+    return InterventionResponse(
         user_id=payload.get("user_id", log.user_id),
         week=week_payload,
         slippage=SlippagePayload(**slippage_payload),
         card=InterventionCard(**card_payload) if card_payload else None,
         request_id=payload.get("request_id", ""),
+    )
+
+
+def _intervention_history_item(log: AgentActionLog) -> InterventionHistoryItem:
+    payload = log.action_payload or {}
+    slippage = payload.get("slippage") or {}
+    week_start = payload.get("week_start") or payload.get("week", {}).get("start", "")
+    week_end = payload.get("week_end") or payload.get("week", {}).get("end", "")
+    return InterventionHistoryItem(
+        id=log.id,
+        created_at=log.created_at.isoformat() if log.created_at else "",
+        week_start=week_start,
+        week_end=week_end,
+        flagged=bool(slippage.get("flagged", False)),
+        reason=slippage.get("reason"),
     )

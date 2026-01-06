@@ -7,10 +7,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-class WeeklyPlanRunRequest(BaseModel):
-    user_id: UUID
-    force: bool = False
-
 class WeekWindowPayload(BaseModel):
     start: date
     end: date
@@ -40,4 +36,39 @@ class WeeklyPlanPreviewResponse(BaseModel):
     week: WeekWindowPayload
     inputs: WeeklyPlanInputs
     micro_resolution: MicroResolutionPayload
+    request_id: str
+
+
+class WeeklyPlanResponse(WeeklyPlanPreviewResponse):
+    pass
+
+
+class WeeklyPlanRunRequest(BaseModel):
+    user_id: UUID
+    force: bool = False
+
+
+class WeeklyPlanHistoryItem(BaseModel):
+    id: UUID
+    created_at: str
+    week_start: str
+    week_end: str
+    title: str
+    completion_rate: Optional[float] = None
+
+
+class WeeklyPlanHistoryResponse(BaseModel):
+    user_id: UUID
+    items: List[WeeklyPlanHistoryItem]
+    next_cursor: Optional[str]
+    request_id: str
+
+
+class WeeklyPlanHistoryDetailResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    created_at: str
+    week_start: str
+    week_end: str
+    snapshot: WeeklyPlanResponse
     request_id: str
