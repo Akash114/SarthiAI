@@ -67,7 +67,14 @@ export default function InterventionsScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchSnapshot(); }} />}
     >
       <Text style={styles.title}>Interventions</Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.error}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchSnapshot}>
+            <Text style={styles.retryText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {snapshot ? (
         <View style={styles.card}>
@@ -102,7 +109,7 @@ export default function InterventionsScreen() {
         </View>
       ) : null}
 
-      {!snapshot && notFound ? (
+      {!snapshot ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No check-in yet</Text>
           <Text style={styles.helper}>You can generate a gentle check-in based on your recent week.</Text>
@@ -206,6 +213,24 @@ const styles = StyleSheet.create({
   },
   error: {
     color: "#c62828",
+  },
+  errorBox: {
+    backgroundColor: "#fdecea",
+    borderRadius: 12,
+    padding: 12,
+  },
+  retryButton: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#c62828",
+  },
+  retryText: {
+    color: "#c62828",
+    fontWeight: "600",
   },
   debugBox: {
     marginTop: 16,

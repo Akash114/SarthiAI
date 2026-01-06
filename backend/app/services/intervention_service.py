@@ -127,6 +127,7 @@ def _find_existing_snapshot(
         db.query(AgentActionLog)
         .filter(AgentActionLog.user_id == user_id, AgentActionLog.action_type == action_type)
         .order_by(AgentActionLog.created_at.desc())
+        .limit(100)
         .all()
     )
     for log in logs:

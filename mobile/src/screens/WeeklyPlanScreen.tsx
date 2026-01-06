@@ -67,7 +67,14 @@ export default function WeeklyPlanScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchPlan(); }} />}
     >
       <Text style={styles.title}>Weekly Plan</Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.error}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchPlan}>
+            <Text style={styles.retryText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {plan ? (
         <View style={styles.card}>
@@ -94,11 +101,15 @@ export default function WeeklyPlanScreen() {
         </View>
       ) : null}
 
-      {!plan && notFound ? (
+      {!plan ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No weekly plan yet</Text>
           <Text style={styles.helper}>When you’re ready, generate a gentle focus for next week.</Text>
-          <TouchableOpacity style={[styles.button, running && styles.buttonDisabled]} onPress={handleGenerate} disabled={running}>
+          <TouchableOpacity
+            style={[styles.button, running && styles.buttonDisabled]}
+            onPress={handleGenerate}
+            disabled={running}
+          >
             {running ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Generate Weekly Plan</Text>}
           </TouchableOpacity>
         </View>
@@ -202,6 +213,24 @@ const styles = StyleSheet.create({
   },
   error: {
     color: "#c62828",
+  },
+  errorBox: {
+    backgroundColor: "#fdecea",
+    borderRadius: 12,
+    padding: 12,
+  },
+  retryButton: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#c62828",
+  },
+  retryText: {
+    color: "#c62828",
+    fontWeight: "600",
   },
   debugBox: {
     marginTop: 16,

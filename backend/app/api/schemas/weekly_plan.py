@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class WeeklyPlanRunRequest(BaseModel):
     user_id: UUID
+    force: bool = False
 
 class WeekWindowPayload(BaseModel):
     start: date

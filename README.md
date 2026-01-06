@@ -155,7 +155,7 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
 ## Agent Preview & Snapshot Endpoints (Manual triggers for P0 features)
 - **Weekly Micro-Resolution Generator**
   - `GET /weekly-plan/preview?user_id=<uuid>`: deterministic look-ahead preview (no writes).
-  - `POST /weekly-plan/run` with JSON `{"user_id":"<uuid>"}`: generates the plan, persists a snapshot inside `AgentActionLog`, and returns it.
+  - `POST /weekly-plan/run` with JSON `{"user_id":"<uuid>", "force": false}`: generates the plan, persists a snapshot inside `AgentActionLog`, and returns it. Set `force=true` to bypass dedupe if you need to re-run the same week manually.
   - `GET /weekly-plan/latest?user_id=<uuid>`: fetches the most recent stored snapshot (404 if none).
   - Example curls:
     ```bash
@@ -166,7 +166,7 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
     ```
 - **Basic Intervention System**
   - `GET /interventions/preview?user_id=<uuid>`: read-only preview.
-  - `POST /interventions/run` with `{"user_id":"<uuid>"}`: generate + store snapshot.
+  - `POST /interventions/run` with `{"user_id":"<uuid>", "force": false}`: generate + store snapshot (`force=true` bypasses dedupe).
   - `GET /interventions/latest?user_id=<uuid>`: retrieve the latest stored intervention card (404 if none).
   - Example curls:
     ```bash

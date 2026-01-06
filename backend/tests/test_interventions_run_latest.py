@@ -117,12 +117,40 @@ def test_intervention_run_and_latest(client):
 
     session = session_factory()
     try:
-        log = (
+        logs = (
             session.query(AgentActionLog)
             .filter(AgentActionLog.user_id == user_id, AgentActionLog.action_type == "intervention_generated")
-            .one()
+            .all()
         )
-        assert log.action_payload["slippage"]["flagged"] is True
+        assert len(logs) == 1
+        assert logs[0].action_payload["slippage"]["flagged"] is True
+    finally:
+        session.close()
+
+    # dedupe guard
+    second_run = test_client.post("/interventions/run", json={"user_id": str(user_id)})
+    assert second_run.status_code == 200
+    session = session_factory()
+    try:
+        count = (
+            session.query(AgentActionLog)
+            .filter(AgentActionLog.user_id == user_id, AgentActionLog.action_type == "intervention_generated")
+            .count()
+        )
+        assert count == 1
+    finally:
+        session.close()
+
+    forced_run = test_client.post("/interventions/run", json={"user_id": str(user_id), "force": True})
+    assert forced_run.status_code == 200
+    session = session_factory()
+    try:
+        count = (
+            session.query(AgentActionLog)
+            .filter(AgentActionLog.user_id == user_id, AgentActionLog.action_type == "intervention_generated")
+            .count()
+        )
+        assert count == 2
     finally:
         session.close()
 

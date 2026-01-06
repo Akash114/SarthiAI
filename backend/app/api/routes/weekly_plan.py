@@ -82,6 +82,7 @@ def weekly_plan_run(
                 user_id=payload.user_id,
                 preview=preview,
                 request_id=request_id,
+                force=payload.force,
             )
         except ValueError:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -91,7 +92,7 @@ def weekly_plan_run(
     log_metric(
         "weekly_plan.run.snapshot_created",
         1 if result.created else 0,
-        metadata={"user_id": str(payload.user_id)},
+        metadata={"user_id": str(payload.user_id), "force": payload.force},
     )
     log_metric("weekly_plan.run.latency_ms", latency_ms, metadata={"user_id": str(payload.user_id)})
     return _response_from_log(result.log)

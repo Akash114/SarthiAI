@@ -33,7 +33,7 @@ def main() -> None:
             _run_weekly_plan_job()
             _run_intervention_job()
     else:
-        logger.warning("Scheduler disabled via config; worker will idle")
+        logger.warning("Scheduler worker started but SCHEDULER_ENABLED=false; worker will idle.")
 
     stop_event = threading.Event()
 

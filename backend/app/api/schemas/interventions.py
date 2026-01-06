@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 class InterventionRunRequest(BaseModel):
     user_id: UUID
+    force: bool = False
 
 class WeekWindowPayload(BaseModel):
     start: date

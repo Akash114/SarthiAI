@@ -119,12 +119,40 @@ def test_weekly_plan_run_and_latest(client):
 
     session = session_factory()
     try:
-        log = (
+        logs = (
             session.query(AgentActionLog)
             .filter(AgentActionLog.user_id == user_id, AgentActionLog.action_type == "weekly_plan_generated")
-            .one()
+            .all()
         )
-        assert log.action_payload["week"]["start"]
+        assert len(logs) == 1
+        assert logs[0].action_payload["week"]["start"]
+    finally:
+        session.close()
+
+    # dedupe should prevent second snapshot without force
+    second_run = test_client.post("/weekly-plan/run", json={"user_id": str(user_id)})
+    assert second_run.status_code == 200
+    session = session_factory()
+    try:
+        count = (
+            session.query(AgentActionLog)
+            .filter(AgentActionLog.user_id == user_id, AgentActionLog.action_type == "weekly_plan_generated")
+            .count()
+        )
+        assert count == 1
+    finally:
+        session.close()
+
+    forced_run = test_client.post("/weekly-plan/run", json={"user_id": str(user_id), "force": True})
+    assert forced_run.status_code == 200
+    session = session_factory()
+    try:
+        count = (
+            session.query(AgentActionLog)
+            .filter(AgentActionLog.user_id == user_id, AgentActionLog.action_type == "weekly_plan_generated")
+            .count()
+        )
+        assert count == 2
     finally:
         session.close()
 
