@@ -159,7 +159,12 @@ export default function HomeScreen() {
               >
                 {focusList.length ? (
                   focusList.map((focus) => (
-                    <View key={focus.id} style={styles.focusCard}>
+                    <TouchableOpacity
+                      key={focus.id}
+                      activeOpacity={0.7}
+                      style={styles.focusCard}
+                      onPress={() => navigation.navigate("ResolutionDashboardDetail", { resolutionId: focus.id })}
+                    >
                       <Text style={styles.focusTitle} numberOfLines={1} ellipsizeMode="tail">
                         {focus.title}
                       </Text>
@@ -175,7 +180,7 @@ export default function HomeScreen() {
                           ]}
                         />
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   ))
                 ) : (
                   <View style={[styles.focusCard, styles.emptyFocusCard]}>

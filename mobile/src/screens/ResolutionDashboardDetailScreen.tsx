@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View, TouchableOpacity, Platform } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../types/navigation";
 import { fetchDashboard, DashboardResolution } from "../api/dashboard";
 import { listTasks, TaskItem } from "../api/tasks";
 import { useUserId } from "../state/user";
+import { Calendar, CheckCircle, Clock } from "lucide-react-native";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ResolutionDashboardDetail">;
 
@@ -63,80 +64,108 @@ export default function ResolutionDashboardDetailScreen({ route }: Props) {
           </>
         ) : (
           <>
-            <ActivityIndicator />
-            <Text style={styles.helper}>Loading resolution summary…</Text>
+            <ActivityIndicator color="#6B8DBF" />
+            <Text style={styles.helper}>Loading your journey…</Text>
           </>
         )}
       </View>
     );
   }
 
+  const totalWeeks = resolution.duration_weeks ?? 12;
+  const currentWeek = Math.min(totalWeeks, Math.max(1, Math.round(resolution.completion_rate * totalWeeks) || 1));
+  const weekRange = `${resolution.week.start} - ${resolution.week.end}`;
+  const combinedTasks = [...filterWeekTasks.scheduled, ...filterWeekTasks.unscheduled];
+  const remainingFlow = combinedTasks.filter((task) => !task.completed);
+  const completedWins = combinedTasks.filter((task) => task.completed);
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>{resolution.title}</Text>
-      <Text style={styles.meta}>
-        {resolution.type} · {resolution.duration_weeks ?? "Flexible"} weeks
+      <Text style={styles.subtitle}>
+        Week {currentWeek} of {resolution.duration_weeks ?? "Flexible"}
       </Text>
-      <Text style={styles.helper}>
-        Current week: {resolution.week.start} – {resolution.week.end}
-      </Text>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Progress</Text>
-        <Text style={styles.body}>
-          {resolution.tasks.completed}/{resolution.tasks.total} tasks completed (
-          {Math.round(resolution.completion_rate * 100)}%)
-        </Text>
-        <Text style={styles.body}>
-          Scheduled this week: {resolution.tasks.scheduled} · Unscheduled: {resolution.tasks.unscheduled}
-        </Text>
+      <View style={styles.progressBar}>
+        <View style={[styles.progressFill, { width: `${Math.round(resolution.completion_rate * 100)}%` }]} />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Scheduled this week</Text>
-        {filterWeekTasks.scheduled.length ? (
-          filterWeekTasks.scheduled.map((task) => (
-            <View key={task.id} style={styles.taskRow}>
-              <Text style={[styles.taskTitle, task.completed && styles.completed]}>{task.title}</Text>
-              <Text style={styles.taskMeta}>
-                {task.scheduled_day} {task.scheduled_time ? `· ${task.scheduled_time}` : ""}
-              </Text>
-              {task.note ? <Text style={styles.noteText}>Note: {task.note}</Text> : null}
+      <View style={styles.timelineSection}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeline}>
+          {Array.from({ length: totalWeeks }, (_, index) => {
+            const weekNumber = index + 1;
+            const state = weekNumber < currentWeek ? "past" : weekNumber === currentWeek ? "current" : "future";
+            return (
+              <View
+                key={weekNumber}
+                style={[
+                  styles.weekPill,
+                  state === "past" && styles.weekPillPast,
+                  state === "current" && styles.weekPillCurrent,
+                  state === "future" && styles.weekPillFuture,
+                ]}
+              >
+                {state === "past" ? <CheckCircle size={16} color="#6B7280" /> : null}
+                <Text
+                  style={[
+                    styles.weekLabel,
+                    state === "current" && styles.weekLabelCurrent,
+                    state === "future" && styles.weekLabelFuture,
+                  ]}
+                >
+                  W{weekNumber}
+                </Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+        <View style={styles.weekRangeRow}>
+          <Calendar size={16} color="#6B7280" />
+          <Text style={styles.weekRange}>{weekRange}</Text>
+        </View>
+      </View>
+
+      <View style={styles.focusCard}>
+        <Text style={styles.sectionLabel}>Current Focus</Text>
+        <Text style={styles.focusText}>Building consistency with daily actions.</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Remaining Flow</Text>
+        {remainingFlow.length ? (
+          remainingFlow.map((task) => (
+            <View key={task.id} style={styles.taskCard}>
+              <View style={styles.checkbox}>
+                <Clock size={16} color="#6B7280" />
+              </View>
+              <View style={styles.taskContent}>
+                <Text style={styles.taskTitle}>{task.title}</Text>
+                <Text style={styles.taskMeta}>
+                  {task.scheduled_day || "Flexible"} {task.scheduled_time ? `· ${task.scheduled_time}` : ""}
+                </Text>
+              </View>
             </View>
           ))
         ) : (
-          <Text style={styles.helper}>No scheduled tasks this week.</Text>
+          <Text style={styles.helper}>Everything scheduled for this week is complete.</Text>
         )}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Unscheduled</Text>
-        {filterWeekTasks.unscheduled.length ? (
-          filterWeekTasks.unscheduled.map((task) => (
-            <View key={task.id} style={styles.taskRow}>
-              <Text style={[styles.taskTitle, task.completed && styles.completed]}>{task.title}</Text>
-              {task.note ? <Text style={styles.noteText}>Note: {task.note}</Text> : null}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Completed Wins</Text>
+        {completedWins.length ? (
+          completedWins.map((task) => (
+            <View key={task.id} style={[styles.taskCard, styles.completedCard]}>
+              <View style={[styles.checkbox, styles.checkboxDone]}>
+                <CheckCircle size={16} color="#fff" />
+              </View>
+              <View style={styles.taskContent}>
+                <Text style={[styles.taskTitle, styles.completedText]}>{task.title}</Text>
+                {task.note ? <Text style={styles.taskMeta}>Note: {task.note}</Text> : null}
+              </View>
             </View>
           ))
         ) : (
-          <Text style={styles.helper}>Nothing unscheduled at the moment.</Text>
-        )}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Recent activity</Text>
-        {resolution.recent_activity.length ? (
-          resolution.recent_activity.map((activity) => (
-            <View key={activity.task_id} style={styles.activityRow}>
-              <Text style={[styles.taskTitle, activity.completed && styles.completed]}>{activity.title}</Text>
-              {activity.completed_at ? (
-                <Text style={styles.taskMeta}>{new Date(activity.completed_at).toLocaleString()}</Text>
-              ) : null}
-              {activity.note_present ? <Text style={styles.noteText}>Note captured</Text> : null}
-            </View>
-          ))
-        ) : (
-          <Text style={styles.helper}>No recent updates.</Text>
+          <Text style={styles.helper}>No wins logged yet.</Text>
         )}
       </View>
     </ScrollView>
@@ -145,61 +174,145 @@ export default function ResolutionDashboardDetailScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    gap: 12,
+    padding: 20,
+    gap: 16,
+    backgroundColor: "#FAFAF8",
   },
   title: {
-    fontSize: 22,
+    fontSize: 30,
+    color: "#2D3748",
+    fontFamily: Platform.select({ ios: "Georgia", default: "serif" }),
+  },
+  subtitle: {
+    color: "#6B7280",
+    fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
+  },
+  progressBar: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "#E5E7EB",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#6B8DBF",
+  },
+  timelineSection: {
+    marginTop: 12,
+  },
+  timeline: {
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 8,
+  },
+  weekPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  weekPillPast: {
+    backgroundColor: "#E5E7EB",
+  },
+  weekPillCurrent: {
+    backgroundColor: "#6B8DBF",
+  },
+  weekPillFuture: {
+    backgroundColor: "#F1F5F9",
+  },
+  weekLabel: {
     fontWeight: "600",
+    color: "#4B5563",
   },
-  meta: {
-    color: "#666",
+  weekLabelCurrent: {
+    color: "#fff",
   },
-  body: {
-    marginTop: 4,
-    color: "#333",
+  weekLabelFuture: {
+    color: "#94A3B8",
   },
-  card: {
+  weekRangeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+  },
+  weekRange: {
+    marginTop: 6,
+    color: "#6B7280",
+    fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
+  },
+  focusCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+  },
+  section: {
+    backgroundColor: "transparent",
+  },
+  sectionLabel: {
+    fontWeight: "600",
+    color: "#1F2933",
+    marginBottom: 12,
+  },
+  focusText: {
+    color: "#475569",
+  },
+  taskCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
     padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+    marginBottom: 8,
+  },
+  checkbox: {
+    width: 32,
+    height: 32,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#e2e7f0",
-    backgroundColor: "#fff",
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F8FAFC",
   },
-  sectionTitle: {
-    fontWeight: "600",
-    marginBottom: 8,
+  checkboxDone: {
+    backgroundColor: "#6B8DBF",
+    borderColor: "#6B8DBF",
   },
-  taskRow: {
-    marginBottom: 8,
+  taskContent: {
+    flex: 1,
   },
   taskTitle: {
     fontWeight: "600",
+    color: "#1F2933",
   },
   taskMeta: {
-    color: "#666",
-    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 4,
   },
-  noteText: {
-    color: "#1a73e8",
-    fontSize: 12,
+  completedCard: {
+    opacity: 0.6,
   },
-  completed: {
+  completedText: {
     textDecorationLine: "line-through",
-    color: "#777",
-  },
-  activityRow: {
-    marginBottom: 8,
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
+    backgroundColor: "#FAFAF8",
   },
   helper: {
     marginTop: 8,
-    color: "#666",
+    color: "#6B7280",
     textAlign: "center",
   },
   error: {
