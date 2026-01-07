@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  Platform,
+} from "react-native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { fetchDashboard, DashboardResolution } from "../api/dashboard";
@@ -47,8 +56,8 @@ export default function ResolutionDashboardScreen() {
   if (userLoading || (loading && !dashboard.length)) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.helper}>Gathering your focus areas…</Text>
+        <ActivityIndicator color="#6B8DBF" />
+        <Text style={styles.helper}>Gathering insights…</Text>
       </View>
     );
   }
@@ -68,53 +77,70 @@ export default function ResolutionDashboardScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.emptyTitle}>No active resolutions</Text>
-        <Text style={styles.helper}>Approve a plan to activate this dashboard.</Text>
+        <Text style={styles.helper}>No active resolutions. Start a new journey from Home.</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-      {dashboard.map((resolution) => (
-        <TouchableOpacity
-          key={resolution.resolution_id}
-          style={styles.card}
-          onPress={() => navigation.navigate("ResolutionDashboardDetail", { resolutionId: resolution.resolution_id })}
-        >
-          <Text style={styles.title}>{resolution.title}</Text>
-          <Text style={styles.meta}>
-            {resolution.type} · {resolution.duration_weeks ?? "Flexible"} weeks
-          </Text>
-          <Text style={styles.week}>
-            Week: {resolution.week.start} – {resolution.week.end}
-          </Text>
-          <View style={styles.progressRow}>
-            <Text style={styles.progressText}>
-              {resolution.tasks.completed}/{resolution.tasks.total} tasks completed ({Math.round(resolution.completion_rate * 100)}%)
-            </Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${resolution.completion_rate * 100}%` }]} />
-            </View>
-          </View>
-          <Text style={styles.breakdown}>
-            Scheduled: {resolution.tasks.scheduled} · Unscheduled: {resolution.tasks.unscheduled}
-          </Text>
-          <Text style={styles.sectionTitle}>Recent activity</Text>
-          {resolution.recent_activity.length ? (
-            resolution.recent_activity.slice(0, 5).map((activity) => (
-              <View key={activity.task_id} style={styles.activityRow}>
-                <Text style={[styles.activityTitle, activity.completed && styles.completed]}>
-                  {activity.title}
-                </Text>
-                {activity.note_present ? <Text style={styles.noteBadge}>Note</Text> : null}
-                {activity.completed_at ? <Text style={styles.activityMeta}>{new Date(activity.completed_at).toLocaleString()}</Text> : null}
+    <ScrollView
+      contentContainerStyle={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
+      <Text style={styles.headerTitle}>Focus Areas</Text>
+      {dashboard.map((resolution) => {
+        const completionPercent = Math.round(resolution.completion_rate * 100);
+        const badge = getStatusBadge(completionPercent);
+        const latestActivity = resolution.recent_activity[0];
+        const duration = resolution.duration_weeks ?? "—";
+        const currentWeek =
+          typeof duration === "number"
+            ? Math.min(duration, Math.max(1, Math.round(resolution.completion_rate * duration) || 1))
+            : "—";
+        return (
+          <TouchableOpacity
+            key={resolution.resolution_id}
+            style={styles.card}
+            onPress={() => navigation.navigate("ResolutionDashboardDetail", { resolutionId: resolution.resolution_id })}
+          >
+            <View style={styles.cardHeader}>
+              <View style={styles.cardTitleWrapper}>
+                <Text style={styles.title}>{resolution.title}</Text>
               </View>
-            ))
-          ) : (
-            <Text style={styles.helper}>No recent updates yet.</Text>
-          )}
-        </TouchableOpacity>
-      ))}
+              <View style={[styles.badge, badge.style]}>
+                <Text style={[styles.badgeText, badge.textStyle]}>{badge.label}</Text>
+              </View>
+            </View>
+            <View style={styles.progressRow}>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${completionPercent}%` }]} />
+              </View>
+            </View>
+            <View style={styles.statsRow}>
+              <Text style={styles.meta}>
+                {resolution.tasks.completed}/{resolution.tasks.total} Tasks
+              </Text>
+              <Text style={styles.meta}>
+                Week {currentWeek} of {duration}
+              </Text>
+            </View>
+            {latestActivity ? (
+              <View style={styles.activityCard}>
+                <Text style={styles.activityLabel}>Latest Update</Text>
+                <Text style={styles.activityTitle}>{latestActivity.title}</Text>
+                {latestActivity.completed_at ? (
+                  <Text style={styles.activityMeta}>{new Date(latestActivity.completed_at).toLocaleString()}</Text>
+                ) : null}
+              </View>
+            ) : (
+              <View style={styles.activityCard}>
+                <Text style={styles.activityLabel}>Latest Update</Text>
+                <Text style={styles.helper}>No recent updates yet.</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        );
+      })}
       {requestId ? (
         <View style={styles.debugCard}>
           <Text style={styles.debugLabel}>request_id: {requestId}</Text>
@@ -124,88 +150,135 @@ export default function ResolutionDashboardScreen() {
   );
 }
 
+function getStatusBadge(percent: number) {
+  if (percent >= 80) {
+    return { label: "On Track", style: styles.badgeGreen, textStyle: styles.badgeGreenText };
+  }
+  if (percent < 50) {
+    return { label: "Needs Focus", style: styles.badgeAmber, textStyle: styles.badgeAmberText };
+  }
+  return { label: "Steady", style: styles.badgeBlue, textStyle: styles.badgeBlueText };
+}
+
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#FAFAF8",
+  },
   container: {
-    padding: 16,
+    padding: 20,
+    gap: 12,
   },
   card: {
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e2e7f0",
     backgroundColor: "#fff",
+    borderRadius: 24,
+    padding: 20,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  headerTitle: {
+    fontSize: 30,
+    color: "#2D3748",
+    fontFamily: Platform.select({ ios: "Georgia", default: "serif" }),
+    marginBottom: 12,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  cardTitleWrapper: {
+    flex: 1,
+    paddingRight: 12,
   },
   title: {
-    fontSize: 18,
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#2D3748",
+  },
+  badge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  badgeText: {
     fontWeight: "600",
   },
-  meta: {
-    color: "#666",
-    marginTop: 4,
+  badgeGreen: {
+    backgroundColor: "#DCFCE7",
   },
-  week: {
-    marginTop: 4,
-    color: "#444",
+  badgeGreenText: {
+    color: "#15803D",
+  },
+  badgeBlue: {
+    backgroundColor: "#DBEAFE",
+  },
+  badgeBlueText: {
+    color: "#1D4ED8",
+  },
+  badgeAmber: {
+    backgroundColor: "#FEF3C7",
+  },
+  badgeAmberText: {
+    color: "#B45309",
   },
   progressRow: {
-    marginTop: 12,
-  },
-  progressText: {
-    fontWeight: "600",
+    marginTop: 8,
   },
   progressBar: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#e6ecf5",
-    marginTop: 6,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "#E5E7EB",
   },
   progressFill: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#1a73e8",
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#6B8DBF",
   },
-  breakdown: {
-    marginTop: 8,
-    color: "#555",
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 10,
   },
-  sectionTitle: {
-    marginTop: 12,
+  meta: {
+    color: "#6B7280",
+  },
+  activityCard: {
+    marginTop: 14,
+    backgroundColor: "#FAFAF8",
+    borderRadius: 16,
+    padding: 12,
+  },
+  activityLabel: {
     fontWeight: "600",
-  },
-  activityRow: {
-    marginTop: 6,
+    color: "#1F2933",
   },
   activityTitle: {
-    fontWeight: "500",
-  },
-  completed: {
-    textDecorationLine: "line-through",
-    color: "#555",
-  },
-  noteBadge: {
-    marginTop: 2,
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    backgroundColor: "#fff3cd",
-    color: "#8a6d3b",
-    fontSize: 12,
+    marginTop: 4,
+    fontWeight: "600",
+    color: "#111827",
   },
   activityMeta: {
-    color: "#888",
+    color: "#6B7280",
+    marginTop: 4,
     fontSize: 12,
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: 16,
+    padding: 24,
+    backgroundColor: "#FAFAF8",
   },
   helper: {
     marginTop: 8,
-    color: "#555",
+    color: "#6B7280",
     textAlign: "center",
   },
   error: {
@@ -219,10 +292,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1a73e8",
+    borderColor: "#6B8DBF",
   },
   retryText: {
-    color: "#1a73e8",
+    color: "#6B8DBF",
     fontWeight: "600",
   },
   emptyTitle: {

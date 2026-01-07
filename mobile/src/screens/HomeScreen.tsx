@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  RefreshControl,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Settings, Plus, Brain, Target, Check, Calendar } from "lucide-react-native";
@@ -127,7 +119,7 @@ export default function HomeScreen() {
   const toggleFab = () => setFabOpen((prev) => !prev);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
       <View style={styles.flex}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -154,8 +146,11 @@ export default function HomeScreen() {
             </View>
           ) : (
             <>
-              <View style={styles.sectionHeaderRow}>
+              <View style={[styles.sectionHeaderRow, styles.focusHeader]}>
                 <Text style={styles.sectionTitle}>This Week&apos;s Focus</Text>
+                <TouchableOpacity onPress={() => navigation.navigate("Dashboard")}>
+                  <Text style={styles.linkText}>View Dashboard</Text>
+                </TouchableOpacity>
               </View>
               <ScrollView
                 horizontal
@@ -417,10 +412,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginTop: 8,
   },
+  focusHeader: {
+    marginTop: 24,
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: "#2D3748",
+  },
+  linkText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#6B8DBF",
   },
   focusCarousel: {
     paddingBottom: 8,
