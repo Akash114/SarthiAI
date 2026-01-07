@@ -20,7 +20,7 @@ export type BrainDumpRequest = {
 };
 
 export async function submitBrainDump(payload: BrainDumpRequest): Promise<{
-  response: BrainDumpResponse;
+  data: BrainDumpResponse;
   requestId: string | null;
 }> {
   const { data, response } = await apiRequest<BrainDumpResponse>("/brain-dump", {
@@ -29,7 +29,7 @@ export async function submitBrainDump(payload: BrainDumpRequest): Promise<{
   });
 
   return {
-    response: data,
+    data,
     requestId: response.headers.get("X-Request-Id"),
   };
 }

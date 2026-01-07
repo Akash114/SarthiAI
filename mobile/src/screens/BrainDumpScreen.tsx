@@ -1,7 +1,23 @@
-import { useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View, TouchableOpacity } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  LayoutAnimation,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  TouchableOpacity,
+  UIManager,
+} from "react-native";
+import { CheckCircle2 } from "lucide-react-native";
+import { useNavigation } from "@react-navigation/native";
 import { submitBrainDump, BrainDumpResponse } from "../api/brainDump";
 import { useUserId } from "../state/user";
+import type { RootStackParamList } from "../../types/navigation";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 const MAX_LENGTH = 2000;
 
@@ -10,28 +26,57 @@ type SubmissionResult = {
   requestId: string | null;
 };
 
+type Step = "INTAKE" | "PROCESSING" | "ANALYSIS";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 export default function BrainDumpScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { userId, loading: userLoading } = useUserId();
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SubmissionResult | null>(null);
+  const [step, setStep] = useState<Step>("INTAKE");
+  const pulse = useRef(new Animated.Value(0)).current;
 
   const charCount = text.length;
   const trimmed = text.trim();
   const canSubmit = !!trimmed && charCount <= MAX_LENGTH && !!userId && !loading;
 
+  useEffect(() => {
+    if (step === "PROCESSING") {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulse, { toValue: 0, duration: 800, useNativeDriver: true }),
+        ]),
+      ).start();
+    } else {
+      pulse.stopAnimation();
+      pulse.setValue(0);
+    }
+  }, [step, pulse]);
+
   const handleSubmit = async () => {
     if (!canSubmit || !userId) return;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setLoading(true);
     setError(null);
+    setStep("PROCESSING");
     setResult(null);
     try {
       const data = await submitBrainDump({ user_id: userId, text: trimmed });
-      setResult(data);
+      setResult({ response: data.data, requestId: data.requestId });
       setText("");
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setStep("ANALYSIS");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setStep("INTAKE");
     } finally {
       setLoading(false);
     }
@@ -47,112 +92,174 @@ export default function BrainDumpScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Brain Dump</Text>
-      <Text style={styles.helper}>Let it out. FlowBuddy will capture signals, not judge.</Text>
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        {step === "INTAKE" ? (
+          <>
+            <Text style={styles.title}>What&apos;s on your mind?</Text>
+            <Text style={styles.helper}>FlowBuddy listens but won&apos;t add tasks unless you ask.</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                multiline
+                maxLength={MAX_LENGTH}
+                placeholder="I’m feeling stuck because..."
+                placeholderTextColor="#94A3B8"
+                value={text}
+                onChangeText={setText}
+                textAlignVertical="top"
+                editable={!loading}
+              />
+              <Text style={styles.counter}>
+                {charCount}/{MAX_LENGTH}
+              </Text>
+            </View>
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <TouchableOpacity style={[styles.button, !canSubmit && styles.buttonDisabled]} onPress={handleSubmit} disabled={!canSubmit}>
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Analyze Signal</Text>}
+            </TouchableOpacity>
+          </>
+        ) : null}
 
-      <TextInput
-        style={styles.input}
-        multiline
-        maxLength={MAX_LENGTH}
-        placeholder="What's on your mind?"
-        value={text}
-        onChangeText={setText}
-        textAlignVertical="top"
-        editable={!loading}
-      />
-      <Text style={styles.counter}>
-        {charCount}/{MAX_LENGTH}
-      </Text>
+        {step === "PROCESSING" ? (
+          <View style={styles.processing}>
+            <Animated.View
+              style={[
+                styles.pulse,
+                {
+                  transform: [
+                    {
+                      scale: pulse.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.9, 1.1],
+                      }),
+                    },
+                  ],
+                  opacity: pulse.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.7, 1],
+                  }),
+                },
+              ]}
+            />
+            <Text style={styles.processingText}>Listening…</Text>
+          </View>
+        ) : null}
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+        {step === "ANALYSIS" && result ? (
+          <View style={styles.analysisCard}>
+            <Text style={styles.acknowledgement}>"{result.response.acknowledgement}"</Text>
 
-      <TouchableOpacity style={[styles.button, !canSubmit && styles.buttonDisabled]} onPress={handleSubmit} disabled={!canSubmit}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Capture</Text>}
-      </TouchableOpacity>
+            <View style={styles.pillGroup}>
+              {renderPill(result.response.signals.emotional_state, "#E0ECFF", "#1D4ED8")}
+              {result.response.signals.blockers.map((blocker) => renderPill(blocker, "#FEE2E2", "#B91C1C"))}
+              {result.response.signals.resolution_refs.map((ref) => renderPill(ref, "#DCFCE7", "#15803D"))}
+            </View>
 
-      {result ? (
-        <View style={styles.resultCard}>
-          <Text style={styles.sectionTitle}>Acknowledgement</Text>
-          <Text style={styles.body}>{result.response.acknowledgement}</Text>
-
-          <Text style={styles.sectionTitle}>Signals</Text>
-          {renderSignal("Actionable", result.response.actionable ? "Yes" : "Not yet")}
-          {renderSignal("Emotional State", result.response.signals.emotional_state || "—")}
-          {renderSignalList("Blockers", result.response.signals.blockers)}
-          {renderSignalList("Resolution References", result.response.signals.resolution_refs)}
-          {renderSignal("Intent", result.response.signals.intent_shift || "—")}
-        </View>
-      ) : null}
-    </ScrollView>
-  );
-}
-
-function renderSignal(label: string, value: string) {
-  return (
-    <View style={styles.signalRow}>
-      <Text style={styles.signalLabel}>{label}</Text>
-      <Text style={styles.signalValue}>{value}</Text>
+            <View style={styles.actionArea}>
+              {result.response.actionable ? (
+                <>
+                  <Text style={styles.actionableText}>FlowBuddy suggests:</Text>
+                  {result.response.acknowledgement ? (
+                    <Text style={styles.suggestedAction}>{result.response.acknowledgement}</Text>
+                  ) : null}
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity
+                      style={[styles.button, styles.primaryAction]}
+                      onPress={() => {
+                        console.log("User accepted suggested action");
+                        navigation.navigate("Home");
+                      }}
+                    >
+                      <Text style={styles.buttonText}>Yes, please</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.button, styles.secondaryAction]}
+                      onPress={() => navigation.navigate("Home")}
+                    >
+                      <Text style={[styles.buttonText, styles.secondaryActionText]}>No, thanks</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.nonActionable}>
+                    <CheckCircle2 color="#4B5563" size={20} />
+                    <Text style={styles.nonActionableText}>Signals captured. No tasks added.</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.button, styles.dismissButton]}
+                    onPress={() => navigation.navigate("Home")}
+                  >
+                    <Text style={styles.buttonText}>Done</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }
 
-function renderSignalList(label: string, items: string[]) {
-  if (!items.length) {
-    return renderSignal(label, "—");
-  }
+function renderPill(value: string | null, bg: string, color: string) {
+  if (!value) return null;
   return (
-    <View style={styles.signalRow}>
-      <Text style={styles.signalLabel}>{label}</Text>
-      <View style={styles.list}>
-        {items.map((item) => (
-          <Text key={item} style={styles.signalValue}>
-            • {item}
-          </Text>
-        ))}
-      </View>
+    <View key={value} style={[styles.pill, { backgroundColor: bg }]}>
+      <Text style={[styles.pillText, { color }]}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#FAFAF8",
+  },
   container: {
-    padding: 20,
+    padding: 24,
+    gap: 16,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "600",
-    marginBottom: 4,
-    color: "#111",
+    fontSize: 26,
+    color: "#2D3748",
+    fontFamily: Platform.select({ ios: "Georgia", default: "serif" }),
   },
   helper: {
-    color: "#555",
-    marginBottom: 16,
+    color: "#6B7280",
+    fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
+  },
+  inputWrapper: {
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
   },
   input: {
-    minHeight: 160,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#cfcfcf",
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: "#fff",
+    minHeight: 180,
+    fontSize: 18,
+    color: "#2D3748",
+    fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
   },
   counter: {
     alignSelf: "flex-end",
-    marginTop: 4,
-    color: "#777",
+    color: "#94A3B8",
+    marginTop: 8,
     fontSize: 12,
   },
   button: {
     marginTop: 16,
-    backgroundColor: "#1a73e8",
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 999,
     alignItems: "center",
+    backgroundColor: "#6B8DBF",
   },
   buttonDisabled: {
-    backgroundColor: "#8fb5f8",
+    backgroundColor: "#A5B8D9",
   },
   buttonText: {
     color: "#fff",
@@ -160,38 +267,89 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   error: {
-    color: "#d93025",
+    color: "#B91C1C",
     marginTop: 8,
   },
-  resultCard: {
-    marginTop: 24,
-    padding: 16,
+  processing: {
+    alignItems: "center",
+    marginTop: 40,
+  },
+  pulse: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#E0ECFF",
+  },
+  processingText: {
+    marginTop: 16,
+    color: "#6B7280",
+    fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
+  },
+  analysisCard: {
+    marginTop: 20,
     backgroundColor: "#fff",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 8 },
   },
-  sectionTitle: {
-    fontWeight: "600",
+  acknowledgement: {
+    fontSize: 22,
+    fontStyle: "italic",
+    color: "#2D3748",
+    fontFamily: Platform.select({ ios: "Georgia", default: "serif" }),
+  },
+  pillGroup: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
     marginTop: 12,
-    marginBottom: 4,
   },
-  body: {
-    color: "#333",
+  pill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
-  signalRow: {
+  pillText: {
+    fontWeight: "600",
+  },
+  actionArea: {
     marginTop: 8,
+    gap: 12,
   },
-  signalLabel: {
-    fontSize: 14,
-    color: "#666",
+  actionableText: {
+    color: "#4B5563",
+    fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
   },
-  signalValue: {
-    fontSize: 16,
-    color: "#111",
+  suggestedAction: {
+    color: "#111827",
+    fontWeight: "600",
   },
-  list: {
-    marginTop: 4,
+  actionButtons: {
+    gap: 8,
+  },
+  primaryAction: {
+    backgroundColor: "#3B82F6",
+  },
+  secondaryAction: {
+    backgroundColor: "#E5E7EB",
+  },
+  secondaryActionText: {
+    color: "#1F2937",
+  },
+  dismissButton: {
+    backgroundColor: "#9DB8A0",
+  },
+  nonActionable: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  nonActionableText: {
+    color: "#4B5563",
   },
   center: {
     flex: 1,
