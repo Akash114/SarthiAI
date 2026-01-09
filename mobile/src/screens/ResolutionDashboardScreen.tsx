@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -53,6 +53,31 @@ export default function ResolutionDashboardScreen() {
     loadDashboard();
   };
 
+  const sortedResolutions = useMemo(() => {
+    return [...dashboard].sort((a, b) => {
+      const aDone = a.completion_rate >= 1;
+      const bDone = b.completion_rate >= 1;
+      const aNeeds = a.completion_rate < 0.6;
+      const bNeeds = b.completion_rate < 0.6;
+      if (aNeeds !== bNeeds) return aNeeds ? -1 : 1;
+      if (aDone !== bDone) return aDone ? 1 : -1;
+      return a.title.localeCompare(b.title);
+    });
+  }, [dashboard]);
+
+  const summary = useMemo(() => {
+    const totals = dashboard.reduce(
+      (acc, res) => {
+        acc.scheduled += res.tasks.total;
+        acc.completed += res.tasks.completed;
+        return acc;
+      },
+      { scheduled: 0, completed: 0 },
+    );
+    const rate = totals.scheduled ? totals.completed / totals.scheduled : 0;
+    return { ...totals, rate };
+  }, [dashboard]);
+
   if (userLoading || (loading && !dashboard.length)) {
     return (
       <View style={styles.center}>
@@ -87,8 +112,25 @@ export default function ResolutionDashboardScreen() {
       contentContainerStyle={styles.container}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryTitle}>Weekly Overview</Text>
+        <Text style={styles.summaryStat}>
+          {summary.completed}/{summary.scheduled} Tasks
+        </Text>
+        <View style={styles.summaryBar}>
+          <View
+            style={[
+              styles.summaryFill,
+              {
+                width: `${Math.min(100, Math.round(summary.rate * 100))}%`,
+                backgroundColor: summary.rate >= 0.6 ? "#48BB78" : "#ECC94B",
+              },
+            ]}
+          />
+        </View>
+      </View>
       <Text style={styles.headerTitle}>Focus Areas</Text>
-      {dashboard.map((resolution) => {
+      {sortedResolutions.map((resolution) => {
         const completionPercent = Math.round(resolution.completion_rate * 100);
         const badge = getStatusBadge(completionPercent);
         const latestActivity = resolution.recent_activity[0];
@@ -100,7 +142,11 @@ export default function ResolutionDashboardScreen() {
         return (
           <TouchableOpacity
             key={resolution.resolution_id}
-            style={styles.card}
+            style={[
+              styles.card,
+              resolution.completion_rate >= 1 && styles.cardComplete,
+              resolution.completion_rate < 0.6 && styles.cardWarning,
+            ]}
             onPress={() => navigation.navigate("ResolutionDashboardDetail", { resolutionId: resolution.resolution_id })}
           >
             <View style={styles.cardHeader}>
@@ -169,6 +215,38 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 12,
   },
+  summaryCard: {
+    backgroundColor: "#2D3748",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  summaryTitle: {
+    color: "#fff",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    fontWeight: "600",
+  },
+  summaryStat: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "700",
+    marginTop: 8,
+  },
+  summaryBar: {
+    height: 16,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    marginTop: 12,
+  },
+  summaryFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
   card: {
     backgroundColor: "#fff",
     borderRadius: 24,
@@ -180,6 +258,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
+  },
+  cardComplete: {
+    opacity: 0.6,
+  },
+  cardWarning: {
+    borderColor: "#FED7AA",
+    backgroundColor: "#FFF7ED",
   },
   headerTitle: {
     fontSize: 30,
