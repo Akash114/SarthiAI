@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  WeekPlanSection,
   decomposeResolution,
   getResolution,
   PlanMilestone,
@@ -7,6 +8,7 @@ import {
   ResolutionResponse,
   WeekOneTask,
 } from "../api/resolutions";
+import { normalizeDateInput, normalizeTimeInput } from "../utils/datetime";
 
 export type PlanData = {
   title: string;
@@ -25,6 +27,7 @@ export type EditableTask = {
   scheduled_time: string;
   duration_min: string;
   original: WeekOneTask;
+  note?: string | null;
 };
 
 type UseResolutionPlanArgs = {
@@ -49,6 +52,8 @@ export function useResolutionPlan({ resolutionId, userId, initialResolution }: U
   const [tasks, setTasks] = useState<EditableTask[]>([]);
   const [loading, setLoading] = useState<boolean>(!initialResolution);
   const [error, setError] = useState<string | null>(null);
+  const [weekPlans, setWeekPlans] = useState<WeekPlanSection[]>([]);
+  const [resolutionStatus, setResolutionStatus] = useState<string>(initialResolution?.status ?? "draft");
   const mountedRef = useRef(true);
   const defaultWeeks = useMemo(() => initialResolution?.duration_weeks ?? undefined, [initialResolution]);
 
@@ -62,27 +67,59 @@ export function useResolutionPlan({ resolutionId, userId, initialResolution }: U
     return rawTasks.map((task) => ({
       id: task.id,
       title: task.title,
-      scheduled_day: task.scheduled_day ?? "",
-      scheduled_time: task.scheduled_time ?? "",
+      scheduled_day: task.scheduled_day ? normalizeDateInput(task.scheduled_day) : "",
+      scheduled_time: task.scheduled_time ? normalizeTimeInput(task.scheduled_time) : "",
       duration_min: task.duration_min != null ? String(task.duration_min) : "",
       original: task,
+      note: task.note ?? null,
+    }));
+  }, []);
+
+  const buildFallbackWeeks = useCallback(
+    (planPayload: PlanData["plan"]) => {
+      return planPayload.milestones.map((milestone) => ({
+        week: milestone.week,
+        focus: milestone.focus,
+        tasks: [],
+      }));
+    },
+    [],
+  );
+
+  const normalizeWeekSections = useCallback((sections: WeekPlanSection[]): WeekPlanSection[] => {
+    return sections.map((section) => ({
+      ...section,
+      tasks: section.tasks.map((task) => ({
+        ...task,
+        scheduled_day: task.scheduled_day ? normalizeDateInput(task.scheduled_day) : task.scheduled_day,
+        scheduled_time: task.scheduled_time ? normalizeTimeInput(task.scheduled_time) : task.scheduled_time,
+      })),
     }));
   }, []);
 
   const assignPlanData = useCallback(
     (resolution: ResolutionDetail) => {
       if (!mountedRef.current) return;
+      const planPayload =
+        resolution.plan ||
+        {
+          weeks: resolution.duration_weeks ?? 8,
+          milestones: [],
+        };
       setPlan({
         title: resolution.title,
         type: resolution.type,
         duration_weeks: resolution.duration_weeks,
-        plan: resolution.plan || {
-          weeks: resolution.duration_weeks ?? 8,
-          milestones: [],
-        },
+        plan: planPayload,
       });
+      const resolvedWeeks =
+        resolution.plan_weeks && resolution.plan_weeks.length
+          ? normalizeWeekSections(resolution.plan_weeks)
+          : buildFallbackWeeks(planPayload);
+      setWeekPlans(resolvedWeeks);
+      setResolutionStatus(resolution.status);
     },
-    [],
+    [buildFallbackWeeks, normalizeWeekSections],
   );
 
   const fetchPlan = useCallback(
@@ -124,6 +161,10 @@ export function useResolutionPlan({ resolutionId, userId, initialResolution }: U
               plan: result.plan,
             });
             setTasks(mapTasks(result.week_1_tasks));
+            const normalizedWeeks =
+              result.weeks && result.weeks.length ? normalizeWeekSections(result.weeks) : buildFallbackWeeks(result.plan);
+            setWeekPlans(normalizedWeeks);
+            setResolutionStatus("draft");
           }
         } else if (planData) {
           assignPlanData(resolution);
@@ -156,6 +197,8 @@ export function useResolutionPlan({ resolutionId, userId, initialResolution }: U
   return {
     plan,
     tasks,
+    weeks: weekPlans,
+    status: resolutionStatus,
     loading,
     error,
     setTasks,

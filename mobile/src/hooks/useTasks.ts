@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listTasks, TaskItem } from "../api/tasks";
+import { normalizeDateInput, normalizeTimeInput } from "../utils/datetime";
 
 type UseTasksOptions = {
   status?: "active" | "draft" | "all";
@@ -32,7 +33,12 @@ export function useTasks(userId: string | null, options: UseTasksOptions = {}) {
     try {
       const { tasks: items, requestId: reqId } = await listTasks(userId, { status, from, to });
       if (!isMounted.current) return;
-      setTasks(items);
+      const normalized = items.map((task) => ({
+        ...task,
+        scheduled_day: task.scheduled_day ? normalizeDateInput(task.scheduled_day) : task.scheduled_day,
+        scheduled_time: task.scheduled_time ? normalizeTimeInput(task.scheduled_time) : task.scheduled_time,
+      }));
+      setTasks(normalized);
       setRequestId(reqId);
     } catch (err) {
       if (!isMounted.current) return;

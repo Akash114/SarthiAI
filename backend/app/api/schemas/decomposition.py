@@ -31,6 +31,19 @@ class DraftTaskPayload(BaseModel):
     scheduled_time: Optional[time] = None
     duration_min: Optional[int] = None
     draft: bool = True
+    note: Optional[str] = None
+
+
+class WeekPlanTask(DraftTaskPayload):
+    intent: Optional[str] = None
+    cadence: Optional[str] = None
+    confidence: Optional[str] = None
+
+
+class WeekPlanSection(BaseModel):
+    week: int
+    focus: str
+    tasks: List[WeekPlanTask] = Field(default_factory=list)
 
 
 class DecompositionResponse(BaseModel):
@@ -41,4 +54,5 @@ class DecompositionResponse(BaseModel):
     duration_weeks: Optional[int]
     plan: PlanPayload
     week_1_tasks: List[DraftTaskPayload]
+    weeks: List[WeekPlanSection]
     request_id: str

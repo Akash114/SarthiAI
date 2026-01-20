@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.schemas.decomposition import PlanPayload, DraftTaskPayload
+from app.api.schemas.decomposition import PlanPayload, DraftTaskPayload, WeekPlanSection
 from app.api.schemas.approval import ApprovedTaskPayload
 
 
@@ -53,6 +53,7 @@ class ResolutionDetailResponse(BaseModel):
     status: str
     duration_weeks: Optional[int]
     plan: Optional[PlanPayload] = None
+    plan_weeks: List[WeekPlanSection] = Field(default_factory=list)
     draft_tasks: List[DraftTaskPayload] = Field(default_factory=list)
     active_tasks: List[ApprovedTaskPayload] = Field(default_factory=list)
     request_id: str

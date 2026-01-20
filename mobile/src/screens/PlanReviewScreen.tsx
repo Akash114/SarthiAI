@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,9 +14,10 @@ import {
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { approveResolution, TaskEditPayload, ApprovalResponse } from "../api/resolutions";
+import { approveResolution, TaskEditPayload, ApprovalResponse, WeekPlanTask } from "../api/resolutions";
 import { useUserId } from "../state/user";
 import { EditableTask, useResolutionPlan } from "../hooks/useResolutionPlan";
+import { formatDisplayDate, formatDisplayTime, getSortTimestamp } from "../utils/datetime";
 import type { RootStackParamList } from "../../types/navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PlanReview">;
@@ -27,6 +28,8 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
   const {
     plan,
     tasks,
+    weeks,
+    status: resolutionStatus,
     loading: planLoading,
     error: planError,
     setTasks,
@@ -40,8 +43,26 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
     mode: "date" | "time";
     value: Date;
   } | null>(null);
+  const [newTaskIdCounter, setNewTaskIdCounter] = useState(0);
+  const [selectedWeek, setSelectedWeek] = useState(1);
 
-  const milestones = useMemo(() => plan?.plan.milestones ?? [], [plan]);
+  const weekSections = useMemo(() => {
+    if (weeks && weeks.length) {
+      return weeks;
+    }
+    if (!plan) {
+      return [];
+    }
+    return plan.plan.milestones.map((milestone) => ({
+      week: milestone.week,
+      focus: milestone.focus,
+      tasks: [],
+    }));
+  }, [weeks, plan]);
+
+  useEffect(() => {
+    setSelectedWeek(1);
+  }, [weekSections.length]);
 
   const updateTaskField = (taskId: string, field: keyof EditableTask, value: string) => {
     setTasks((prev) =>
@@ -94,6 +115,32 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
       }
     }
     return edits;
+  };
+
+  const addTask = () => {
+    const nextId = `temp-${newTaskIdCounter + 1}`;
+    setNewTaskIdCounter((prev) => prev + 1);
+    const fallbackNote = "Add any resources or reminders that keep this task doable.";
+    setTasks((prev) => [
+      ...prev,
+      {
+        id: nextId,
+        title: "",
+        scheduled_day: "",
+        scheduled_time: "",
+        duration_min: "",
+        note: fallbackNote,
+        original: {
+          id: nextId,
+          title: "",
+          scheduled_day: null,
+          scheduled_time: null,
+          duration_min: null,
+          draft: true,
+          note: fallbackNote,
+        },
+      },
+    ]);
   };
 
   const openPicker = (task: EditableTask, mode: "date" | "time") => {
@@ -162,19 +209,94 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
     regenerate();
   };
 
+  const STATUS_MESSAGES = useMemo(
+    () => [
+      "Understanding your goal…",
+      "Breaking it into manageable steps…",
+      "Designing a sustainable weekly rhythm…",
+      "Finding realistic time blocks…",
+      "Finalizing your first week…",
+    ],
+    [],
+  );
+  const [showStatus, setShowStatus] = useState(false);
+  const [statusIndex, setStatusIndex] = useState(0);
+  const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rotateRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const shortDisplayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const displayedRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (delayRef.current) clearTimeout(delayRef.current);
+      if (rotateRef.current) clearInterval(rotateRef.current);
+      if (shortDisplayRef.current) clearTimeout(shortDisplayRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (planLoading) {
+      displayedRef.current = false;
+      setStatusIndex(0);
+      if (delayRef.current) clearTimeout(delayRef.current);
+      if (rotateRef.current) clearInterval(rotateRef.current);
+      if (shortDisplayRef.current) clearTimeout(shortDisplayRef.current);
+      delayRef.current = setTimeout(() => {
+        displayedRef.current = true;
+        setShowStatus(true);
+        rotateRef.current = setInterval(() => {
+          setStatusIndex((prev) => (prev + 1) % STATUS_MESSAGES.length);
+        }, 800);
+      }, 1500);
+    } else {
+      if (delayRef.current) {
+        clearTimeout(delayRef.current);
+        delayRef.current = null;
+      }
+      if (rotateRef.current) {
+        clearInterval(rotateRef.current);
+        rotateRef.current = null;
+      }
+      if (!displayedRef.current) {
+        setStatusIndex(0);
+        setShowStatus(true);
+        shortDisplayRef.current = setTimeout(() => {
+          setShowStatus(false);
+        }, 600);
+      } else {
+        setShowStatus(false);
+      }
+    }
+  }, [planLoading, STATUS_MESSAGES.length]);
+
   const acceptDisabled = pending || userLoading || planLoading || !userId || !plan || !tasks.length || !!success;
   const combinedError = error || planError;
+  const currentStatus = success?.status ?? resolutionStatus;
+  const selectedSection = weekSections.find((section) => section.week === selectedWeek);
+  const isEditableWeek = currentStatus === "draft" && selectedWeek === 1 && !success;
+  const editableTasksOrdered = useMemo(() => sortTasksBySchedule(tasks), [tasks]);
+  const readOnlyTasksOrdered = useMemo(
+    () => sortTasksBySchedule(selectedSection?.tasks ?? []),
+    [selectedSection],
+  );
+  const displayTasks = isEditableWeek ? editableTasksOrdered : readOnlyTasksOrdered;
+  const focusForSelectedWeek = selectedSection?.focus ?? "";
+  const shouldShowTaskSection = isEditableWeek ? tasks.length > 0 : weekSections.length > 0;
+  const showUpcomingBanner = !isEditableWeek && currentStatus === "draft";
 
   if ((planLoading || userLoading) && !plan) {
     return (
       <View style={styles.loadingState}>
-        <ActivityIndicator color="#6B8DBF" />
-        <Text style={styles.helper}>Generating a friendly outline…</Text>
+        <View style={styles.loadingCard}>
+          <ActivityIndicator color="#1D4ED8" size="large" />
+          <Text style={styles.loadingTitle}>Cueing up a supportive outline…</Text>
+          <Text style={styles.loadingHelper}>
+            {showStatus ? STATUS_MESSAGES[statusIndex] : "Smoothing the path before we dive in."}
+          </Text>
+        </View>
       </View>
     );
   }
-
-  const focusForWeekOne = milestones.find((milestone) => milestone.week === 1)?.focus ?? milestones[0]?.focus ?? "";
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -196,63 +318,106 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
                 <Text style={styles.sectionHelper}>{plan.plan.weeks} weeks</Text>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeline}>
-                {milestones.map((milestone) => {
-                  const active = milestone.week === 1;
+                {weekSections.map((section) => {
+                  const active = section.week === selectedWeek;
                   return (
-                    <View key={milestone.week} style={[styles.weekPill, active && styles.weekPillActive]}>
-                      <Text style={[styles.weekLabel, active && styles.weekLabelActive]}>W{milestone.week}</Text>
-                    </View>
+                    <TouchableOpacity
+                      key={section.week}
+                      style={[styles.weekPill, active && styles.weekPillActive]}
+                      onPress={() => setSelectedWeek(section.week)}
+                    >
+                      <Text style={[styles.weekLabel, active && styles.weekLabelActive]}>W{section.week}</Text>
+                    </TouchableOpacity>
                   );
                 })}
               </ScrollView>
-              <Text style={styles.focusLabel}>Focus: {focusForWeekOne || "Reinforce your routine"}</Text>
+              <Text style={styles.focusLabel}>
+                Focus: {focusForSelectedWeek || "Reinforce your routine"}
+              </Text>
             </View>
           ) : null}
 
-          {tasks.length ? (
+          {showStatus ? (
+            <View style={styles.statusBanner}>
+              <Text style={styles.statusLabel}>Crafting your weekly groove…</Text>
+              <Text style={styles.statusMessage}>{STATUS_MESSAGES[statusIndex]}</Text>
+            </View>
+          ) : null}
+
+          {shouldShowTaskSection ? (
             <View style={styles.taskSection}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitleSerif}>Week 1 Tasks</Text>
-                <Text style={styles.sectionHelper}>Editable</Text>
+                <Text style={styles.sectionTitleSerif}>Week {selectedWeek} Tasks</Text>
+                <Text style={styles.sectionHelper}>
+                  {isEditableWeek ? "Editable" : "Preview"}
+                </Text>
               </View>
-              {tasks.map((task) => (
-                <View key={task.id} style={styles.taskCard}>
-                  <TextInput
-                    style={styles.taskInput}
-                    value={task.title}
-                    onChangeText={(value) => updateTaskField(task.id, "title", value)}
-                    placeholder="Describe the task..."
-                    editable={!pending && !success}
-                  />
-                  <View style={styles.taskControls}>
-                    <TouchableOpacity
-                      style={styles.pillButton}
-                      onPress={() => openPicker(task, "date")}
-                      disabled={pending || !!success}
-                    >
-                      <Text style={styles.pillText}>{task.scheduled_day || "Pick date"}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.pillButton}
-                      onPress={() => openPicker(task, "time")}
-                      disabled={pending || !!success}
-                    >
-                      <Text style={styles.pillText}>{task.scheduled_time || "Pick time"}</Text>
-                    </TouchableOpacity>
-                    <TextInput
-                      style={styles.durationInput}
-                      placeholder="Minutes"
-                      keyboardType="number-pad"
-                      value={task.duration_min}
-                      onChangeText={(value) => updateTaskField(task.id, "duration_min", value.replace(/[^0-9]/g, ""))}
-                      editable={!pending && !success}
-                    />
-                  </View>
+              {showUpcomingBanner ? (
+                <View style={styles.upcomingBanner}>
+                  <Text style={styles.upcomingTitle}>Draft – upcoming week</Text>
+                  <Text style={styles.upcomingCopy}>These tasks will unlock as you progress.</Text>
                 </View>
-              ))}
-              <TouchableOpacity style={styles.addButton} onPress={() => Alert.alert("Coming soon", "Task creation is in beta.")}>
-                <Text style={styles.addButtonText}>+ Add another task</Text>
-              </TouchableOpacity>
+              ) : null}
+              {isEditableWeek
+                ? (displayTasks as EditableTask[]).map((task) => (
+                    <View key={task.id} style={styles.taskCard}>
+                      <TextInput
+                        style={styles.taskInput}
+                        value={task.title}
+                        onChangeText={(value) => updateTaskField(task.id, "title", value)}
+                        placeholder="Describe the task..."
+                        editable={!pending && !success}
+                      />
+                      <View style={styles.taskControls}>
+                        <TouchableOpacity
+                          style={styles.pillButton}
+                          onPress={() => openPicker(task, "date")}
+                          disabled={pending || !!success}
+                        >
+                          <Text style={styles.pillText}>{task.scheduled_day || "Pick date"}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.pillButton}
+                          onPress={() => openPicker(task, "time")}
+                          disabled={pending || !!success}
+                        >
+                          <Text style={styles.pillText}>{task.scheduled_time || "Pick time"}</Text>
+                        </TouchableOpacity>
+                        <TextInput
+                          style={styles.durationInput}
+                          placeholder="Minutes"
+                          keyboardType="number-pad"
+                          value={task.duration_min}
+                          onChangeText={(value) => updateTaskField(task.id, "duration_min", value.replace(/[^0-9]/g, ""))}
+                          editable={!pending && !success}
+                        />
+                    </View>
+                    {task.original.note ? (
+                      <Text style={styles.taskNoteHelper}>{task.original.note}</Text>
+                    ) : null}
+                  </View>
+                ))
+              : (displayTasks as WeekPlanTask[]).map((task) => {
+                    const scheduleLabel = formatScheduleLabel(task.scheduled_day, task.scheduled_time);
+                    return (
+                    <View key={task.id} style={[styles.taskCard, styles.readOnlyCard]}>
+                      <Text style={styles.readOnlyTitle}>{task.title}</Text>
+                      {task.intent ? <Text style={styles.readOnlyIntent}>{task.intent}</Text> : null}
+                      <View style={styles.readOnlyMeta}>
+                        {task.cadence ? <Text style={styles.readOnlyChip}>{task.cadence}</Text> : null}
+                        {task.duration_min ? <Text style={styles.readOnlyChip}>{task.duration_min} min</Text> : null}
+                        {task.confidence ? <Text style={styles.readOnlyChip}>Confidence: {task.confidence}</Text> : null}
+                      </View>
+                      <Text style={styles.readOnlyTime}>Suggested: {scheduleLabel}</Text>
+                      {task.note ? <Text style={styles.readOnlyNote}>{task.note}</Text> : null}
+                    </View>
+                  );
+                  })}
+              {isEditableWeek ? (
+                <TouchableOpacity style={styles.addButton} onPress={addTask} disabled={pending || !!success}>
+                  <Text style={styles.addButtonText}>+ Add another task</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : null}
 
@@ -437,6 +602,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
   },
+  taskNoteHelper: {
+    marginTop: 6,
+    color: "#64748B",
+    fontSize: 13,
+  },
   addButton: {
     paddingVertical: 12,
     borderRadius: 14,
@@ -448,6 +618,79 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: "#6B8DBF",
     fontWeight: "600",
+  },
+  readOnlyCard: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  readOnlyTitle: {
+    fontWeight: "600",
+    color: "#1F2937",
+    fontSize: 16,
+  },
+  readOnlyIntent: {
+    color: "#475569",
+    marginTop: 6,
+  },
+  readOnlyMeta: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+  },
+  readOnlyChip: {
+    backgroundColor: "#F1F5F9",
+    color: "#475569",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    fontSize: 12,
+  },
+  readOnlyTime: {
+    marginTop: 12,
+    color: "#64748B",
+    fontSize: 13,
+  },
+  readOnlyNote: {
+    marginTop: 8,
+    color: "#475569",
+    fontStyle: "italic",
+  },
+  upcomingBanner: {
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: "#F0F4FF",
+    borderWidth: 1,
+    borderColor: "#C7D2FE",
+    marginBottom: 12,
+  },
+  upcomingTitle: {
+    fontWeight: "600",
+    color: "#4338CA",
+    marginBottom: 4,
+  },
+  upcomingCopy: {
+    color: "#414B5A",
+  },
+  statusBanner: {
+    backgroundColor: "#EFF6FF",
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    gap: 4,
+    marginTop: 16,
+  },
+  statusLabel: {
+    fontSize: 12,
+    letterSpacing: 0.5,
+    color: "#1D4ED8",
+    fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
+  },
+  statusMessage: {
+    fontSize: 16,
+    color: "#1E293B",
+    fontFamily: Platform.select({ ios: "System", default: "sans-serif-medium" }),
   },
   successCard: {
     backgroundColor: "#9DB8A0",
@@ -550,9 +793,64 @@ const styles = StyleSheet.create({
     backgroundColor: "#FAFAF8",
     justifyContent: "center",
     alignItems: "center",
-    gap: 8,
+    padding: 24,
+  },
+  loadingCard: {
+    width: "85%",
+    borderRadius: 24,
+    padding: 24,
+    backgroundColor: "#ffffff",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    alignItems: "center",
+    gap: 12,
+  },
+  loadingTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1E293B",
+    textAlign: "center",
+  },
+  loadingHelper: {
+    textAlign: "center",
+    color: "#475569",
   },
 });
+
+type TaskWithSchedule = {
+  scheduled_day?: string | null;
+  scheduled_time?: string | null;
+};
+
+function sortTasksBySchedule<T extends TaskWithSchedule>(list: T[]): T[] {
+  return list
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => {
+      const aTs = getSortTimestamp(a.task.scheduled_day, a.task.scheduled_time);
+      const bTs = getSortTimestamp(b.task.scheduled_day, b.task.scheduled_time);
+      const aFinite = Number.isFinite(aTs);
+      const bFinite = Number.isFinite(bTs);
+      if (aFinite && bFinite) {
+        if (aTs === bTs) return a.index - b.index;
+        return aTs - bTs;
+      }
+      if (aFinite) return -1;
+      if (bFinite) return 1;
+      return a.index - b.index;
+    })
+    .map((entry) => entry.task);
+}
+
+function formatScheduleLabel(day?: string | null, time?: string | null): string {
+  const formattedDate = formatDisplayDate(day);
+  const formattedTime = formatDisplayTime(time);
+  if (formattedDate && formattedTime) {
+    return `${formattedDate} · ${formattedTime}`;
+  }
+  return formattedDate ?? formattedTime ?? "Flexible";
+}
 
 function parseDate(value: string): Date | null {
   if (!value) return null;

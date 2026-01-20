@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.api.schemas.approval import ApprovedTaskPayload, TaskEdit
 from app.api.schemas.decomposition import DraftTaskPayload
 from app.db.models.task import Task
-from app.services.resolution_decomposer import DraftTaskSpec
+
+ALLOWED_SOURCES = {"decomposer_v1", "ai_decomposer"}
 
 
 def fetch_draft_tasks(db: Session, resolution_id: UUID) -> List[Task]:
@@ -42,33 +43,23 @@ def delete_existing_draft_tasks(db: Session, resolution_id: UUID) -> None:
 
 def is_draft_task(task: Task) -> bool:
     metadata = task.metadata_json or {}
-    return bool(metadata.get("draft")) and metadata.get("source") == "decomposer_v1"
+    if not metadata.get("draft"):
+        return False
+    source = metadata.get("source")
+    return source in ALLOWED_SOURCES or source is None
 
 
 def is_active_task(task: Task) -> bool:
     metadata = task.metadata_json or {}
-    return metadata.get("draft") is False and metadata.get("source") == "decomposer_v1"
-
-
-def create_tasks_from_specs(resolution, specs: List[DraftTaskSpec]) -> List[Task]:
-    tasks: List[Task] = []
-    for spec in specs:
-        extra_metadata = {k: v for k, v in (spec.metadata or {}).items() if v is not None}
-        metadata = {"draft": True, "source": "decomposer_v1", "week": 1, **extra_metadata}
-        task = Task(
-            user_id=resolution.user_id,
-            resolution_id=resolution.id,
-            title=spec.title,
-            scheduled_day=spec.scheduled_day,
-            scheduled_time=spec.scheduled_time,
-            duration_min=spec.duration_min,
-            metadata_json=metadata,
-        )
-        tasks.append(task)
-    return tasks
+    if metadata.get("draft") is not False:
+        return False
+    source = metadata.get("source")
+    return source in ALLOWED_SOURCES or source is None
 
 
 def serialize_draft_task(task: Task) -> DraftTaskPayload:
+    metadata = task.metadata_json or {}
+    note_value = metadata.get("note")
     return DraftTaskPayload(
         id=task.id,
         title=task.title,
@@ -76,6 +67,7 @@ def serialize_draft_task(task: Task) -> DraftTaskPayload:
         scheduled_time=task.scheduled_time,
         duration_min=task.duration_min,
         draft=True,
+        note=note_value if isinstance(note_value, str) else None,
     )
 
 

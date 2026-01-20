@@ -29,6 +29,18 @@ export type WeekOneTask = {
   scheduled_time: string | null;
   duration_min: number | null;
   draft: boolean;
+  intent?: string;
+  cadence?: string;
+  confidence?: string;
+  note?: string | null;
+};
+
+export type WeekPlanTask = WeekOneTask;
+
+export type WeekPlanSection = {
+  week: number;
+  focus: string;
+  tasks: WeekPlanTask[];
 };
 
 export type DecompositionResponse = {
@@ -39,6 +51,7 @@ export type DecompositionResponse = {
   duration_weeks: number | null;
   plan: PlanPayload;
   week_1_tasks: WeekOneTask[];
+  weeks: WeekPlanSection[];
   request_id?: string;
 };
 
@@ -81,6 +94,7 @@ export type ResolutionDetail = {
   status: string;
   duration_weeks: number | null;
   plan: PlanPayload | null;
+  plan_weeks: WeekPlanSection[];
   draft_tasks: WeekOneTask[];
   active_tasks: {
     id: string;

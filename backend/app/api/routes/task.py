@@ -22,6 +22,7 @@ from app.db.models.agent_action_log import AgentActionLog
 from app.db.models.task import Task
 from app.observability.metrics import log_metric
 from app.observability.tracing import trace
+from app.services.resolution_tasks import ALLOWED_SOURCES
 
 router = APIRouter()
 
@@ -194,13 +195,13 @@ def update_task_completion(
 
 def _is_draft_task(task: Task) -> bool:
     metadata = task.metadata_json or {}
-    return bool(metadata.get("draft")) and metadata.get("source") == "decomposer_v1"
+    return bool(metadata.get("draft")) and (metadata.get("source") in ALLOWED_SOURCES or metadata.get("source") is None)
 
 
 def _serialize_task(task: Task) -> TaskSummary:
     metadata = task.metadata_json or {}
     source = metadata.get("source") or "unknown"
-    if source not in {"decomposer_v1", "manual", "unknown"}:
+    if source not in {"decomposer_v1", "ai_decomposer", "manual", "unknown"}:
         source = "unknown"
 
     note_value = metadata.get("note")

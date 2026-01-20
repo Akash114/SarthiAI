@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas.approval import ApprovedTaskPayload
-from app.api.schemas.decomposition import DraftTaskPayload
+from app.api.schemas.decomposition import DraftTaskPayload, PlanMilestone, PlanPayload, WeekPlanSection
 from app.api.schemas.resolution import (
     ResolutionDetailResponse,
     ResolutionSummary,
@@ -95,7 +95,9 @@ def get_resolution_detail(
 
     metadata_dict = dict(resolution.metadata_json or {})
     plan_payload = metadata_dict.get("plan_v1")
-    plan_data = plan_payload if isinstance(plan_payload, dict) else None
+    plan_data = _build_plan_payload(plan_payload if isinstance(plan_payload, dict) else None)
+    plan_weeks_data = metadata_dict.get("plan_weeks_detail")
+    plan_weeks = _parse_plan_weeks(plan_weeks_data, plan_data)
 
     draft_tasks: List[DraftTaskPayload] = []
     active_tasks: List[ApprovedTaskPayload] = []
@@ -131,7 +133,46 @@ def get_resolution_detail(
         status=resolution.status,
         duration_weeks=resolution.duration_weeks,
         plan=plan_data,
+        plan_weeks=plan_weeks,
         draft_tasks=draft_tasks,
         active_tasks=active_tasks,
         request_id=request_id or "",
     )
+
+
+def _build_plan_payload(plan: Dict[str, Any] | None) -> PlanPayload | None:
+    if not isinstance(plan, dict):
+        return None
+    if "weeks" in plan and "milestones" in plan:
+        try:
+            return PlanPayload(**plan)
+        except Exception:  # pragma: no cover - defensive guard
+            pass
+
+    milestones = []
+    for entry in plan.get("milestones", []):
+        week = entry.get("week_number") or entry.get("week")
+        focus = entry.get("focus_summary") or entry.get("focus")
+        if week is None or focus is None:
+            continue
+        milestones.append(PlanMilestone(week=week, focus=focus, success_criteria=list(entry.get("success_criteria") or [])))
+
+    if not milestones:
+        return None
+
+    total_weeks = plan.get("duration_weeks") or milestones[-1].week
+    return PlanPayload(weeks=total_weeks, milestones=milestones)
+
+
+def _parse_plan_weeks(plan_weeks_raw: Any, plan: PlanPayload | None) -> List[WeekPlanSection]:
+    if isinstance(plan_weeks_raw, list) and plan_weeks_raw:
+        try:
+            return [WeekPlanSection(**section) for section in plan_weeks_raw if isinstance(section, dict)]
+        except Exception:
+            pass
+    if not plan:
+        return []
+    return [
+        WeekPlanSection(week=milestone.week, focus=milestone.focus, tasks=[])
+        for milestone in plan.milestones
+    ]

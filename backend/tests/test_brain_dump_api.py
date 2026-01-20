@@ -9,6 +9,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.deps import get_db
+from app.db.models.agent_action_log import AgentActionLog
+from app.db.models.agent_action_log import AgentActionLog
 from app.db.models.brain_dump import BrainDump
 from app.db.models.user import User
 from app.main import app
@@ -32,6 +34,7 @@ def client():
     TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
     User.__table__.create(bind=engine)
     BrainDump.__table__.create(bind=engine)
+    AgentActionLog.__table__.create(bind=engine)
 
     def override_get_db():
         db = TestingSessionLocal()
