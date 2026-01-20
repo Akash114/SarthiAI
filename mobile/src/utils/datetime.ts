@@ -60,3 +60,36 @@ export function getSortTimestamp(day?: string | null, time?: string | null): num
   const ts = Date.parse(isoCandidate);
   return Number.isNaN(ts) ? Number.POSITIVE_INFINITY : ts;
 }
+
+export type Schedulable = {
+  scheduled_day?: string | null;
+  scheduled_time?: string | null;
+};
+
+export function sortTasksBySchedule<T extends Schedulable>(list: T[]): T[] {
+  return list
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => {
+      const aTs = getSortTimestamp(a.task.scheduled_day, a.task.scheduled_time);
+      const bTs = getSortTimestamp(b.task.scheduled_day, b.task.scheduled_time);
+      const aFinite = Number.isFinite(aTs);
+      const bFinite = Number.isFinite(bTs);
+      if (aFinite && bFinite) {
+        if (aTs === bTs) return a.index - b.index;
+        return aTs - bTs;
+      }
+      if (aFinite) return -1;
+      if (bFinite) return 1;
+      return a.index - b.index;
+    })
+    .map((entry) => entry.task);
+}
+
+export function formatScheduleLabel(day?: string | null, time?: string | null): string {
+  const formattedDate = formatDisplayDate(day);
+  const formattedTime = formatDisplayTime(time);
+  if (formattedDate && formattedTime) {
+    return `${formattedDate} · ${formattedTime}`;
+  }
+  return formattedDate ?? formattedTime ?? "Flexible";
+}

@@ -13,10 +13,11 @@ class BrainDumpRequest(BaseModel):
 
 
 class BrainDumpSignals(BaseModel):
-    emotional_state: Optional[str] = None
-    blockers: List[str] = Field(default_factory=list)
-    resolution_refs: List[str] = Field(default_factory=list)
-    intent_shift: Optional[str] = None
+    sentiment_score: float = Field(..., ge=-1.0, le=1.0)
+    emotions: List[str] = Field(default_factory=list)
+    topics: List[str] = Field(default_factory=list)
+    actionable_items: List[str] = Field(default_factory=list)
+    acknowledgement: str
 
 
 class BrainDumpResponse(BaseModel):

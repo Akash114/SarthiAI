@@ -1,10 +1,11 @@
 import { apiRequest } from "./client";
 
 export type BrainDumpSignals = {
-  emotional_state: string | null;
-  blockers: string[];
-  resolution_refs: string[];
-  intent_shift: string | null;
+  sentiment_score: number;
+  emotions: string[];
+  topics: string[];
+  actionable_items: string[];
+  acknowledgement: string;
 };
 
 export type BrainDumpResponse = {

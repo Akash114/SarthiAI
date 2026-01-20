@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View, Animated, Vibration } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Settings, Plus, Brain, Target, Check, Calendar, Shield } from "lucide-react-native";
 import * as dashboardApi from "../api/dashboard";
@@ -98,6 +98,14 @@ export default function HomeScreen() {
       fetchData();
     }
   }, [fetchData, userLoading, userId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!userLoading && userId) {
+        fetchData({ silent: true });
+      }
+    }, [fetchData, userLoading, userId]),
+  );
 
   const sortedTasks = useMemo(() => {
     return [...todayFlow].sort((a, b) => {

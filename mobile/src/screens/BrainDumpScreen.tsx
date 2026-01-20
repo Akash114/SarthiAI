@@ -149,20 +149,21 @@ export default function BrainDumpScreen() {
         {step === "ANALYSIS" && result ? (
           <View style={styles.analysisCard}>
             <Text style={styles.acknowledgement}>"{result.response.acknowledgement}"</Text>
-
+            <Text style={styles.sentiment}>Sentiment: {result.response.signals.sentiment_score.toFixed(2)}</Text>
             <View style={styles.pillGroup}>
-              {renderPill(result.response.signals.emotional_state, "#E0ECFF", "#1D4ED8")}
-              {result.response.signals.blockers.map((blocker) => renderPill(blocker, "#FEE2E2", "#B91C1C"))}
-              {result.response.signals.resolution_refs.map((ref) => renderPill(ref, "#DCFCE7", "#15803D"))}
+              {result.response.signals.emotions.map((emotion) => renderPill(emotion, "#E0ECFF", "#1D4ED8"))}
+              {result.response.signals.topics.map((topic) => renderPill(topic, "#DCFCE7", "#15803D"))}
             </View>
 
             <View style={styles.actionArea}>
-              {result.response.actionable ? (
+              {result.response.signals.actionable_items.length ? (
                 <>
-                  <Text style={styles.actionableText}>FlowBuddy suggests:</Text>
-                  {result.response.acknowledgement ? (
-                    <Text style={styles.suggestedAction}>{result.response.acknowledgement}</Text>
-                  ) : null}
+                  <Text style={styles.actionableText}>Sarathi noticed these next steps:</Text>
+                  {result.response.signals.actionable_items.map((item) => (
+                    <Text key={item} style={styles.suggestedAction}>
+                      • {item}
+                    </Text>
+                  ))}
                   <View style={styles.actionButtons}>
                     <TouchableOpacity
                       style={[styles.button, styles.primaryAction]}
@@ -301,6 +302,9 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     color: "#2D3748",
     fontFamily: Platform.select({ ios: "Georgia", default: "serif" }),
+  },
+  sentiment: {
+    color: "#4B5563",
   },
   pillGroup: {
     flexDirection: "row",

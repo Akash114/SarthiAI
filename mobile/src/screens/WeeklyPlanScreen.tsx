@@ -86,9 +86,18 @@ export default function WeeklyPlanScreen() {
     >
       <View style={styles.headerRow}>
         <Text style={styles.title}>Weekly Plan</Text>
-        <TouchableOpacity style={styles.linkButton} onPress={() => navigation.navigate("WeeklyPlanHistory")}>
-          <Text style={styles.linkText}>History</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.linkButton} onPress={() => navigation.navigate("WeeklyPlanHistory")}>
+            <Text style={styles.linkText}>History</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.updateButton, running && styles.buttonDisabled]}
+            onPress={handleGenerate}
+            disabled={running}
+          >
+            {running ? <ActivityIndicator color="#fff" /> : <Text style={styles.updateText}>Update Plan</Text>}
+          </TouchableOpacity>
+        </View>
       </View>
       {error ? (
         <View style={styles.errorBox}>
@@ -179,12 +188,29 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   linkButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   linkText: {
     color: "#6B8DBF",
+    fontWeight: "600",
+  },
+  updateButton: {
+    backgroundColor: "#2D3748",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  updateText: {
+    color: "#fff",
     fontWeight: "600",
   },
   focusCard: {

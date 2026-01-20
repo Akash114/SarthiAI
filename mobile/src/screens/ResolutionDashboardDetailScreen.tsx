@@ -6,7 +6,7 @@ import { fetchDashboard, DashboardResolution } from "../api/dashboard";
 import { listTasks, TaskItem } from "../api/tasks";
 import { useUserId } from "../state/user";
 import { Calendar, CheckCircle, Clock } from "lucide-react-native";
-import { formatDisplayDate, formatDisplayTime, getSortTimestamp } from "../utils/datetime";
+import { formatScheduleLabel, sortTasksBySchedule } from "../utils/datetime";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ResolutionDashboardDetail">;
 
@@ -75,11 +75,11 @@ export default function ResolutionDashboardDetailScreen({ route }: Props) {
 
   const totalWeeks = resolution.duration_weeks ?? 12;
   const currentWeek = Math.min(totalWeeks, Math.max(1, Math.round(resolution.completion_rate * totalWeeks) || 1));
-  const weekStart = formatDisplayDate(resolution.week.start) ?? resolution.week.start;
-  const weekEnd = formatDisplayDate(resolution.week.end) ?? resolution.week.end;
-  const weekRange = `${weekStart} - ${weekEnd}`;
+  const weekStartLabel = formatScheduleLabel(resolution.week.start, null) ?? resolution.week.start;
+  const weekEndLabel = formatScheduleLabel(resolution.week.end, null) ?? resolution.week.end;
+  const weekRange = `${weekStartLabel} - ${weekEndLabel}`;
   const combinedTasks = [...filterWeekTasks.scheduled, ...filterWeekTasks.unscheduled];
-  const orderedTasks = sortTaskItems(combinedTasks);
+  const orderedTasks = sortTasksBySchedule(combinedTasks);
   const remainingFlow = orderedTasks.filter((task) => !task.completed);
   const completedWins = orderedTasks.filter((task) => task.completed);
 
@@ -143,7 +143,7 @@ export default function ResolutionDashboardDetailScreen({ route }: Props) {
               </View>
               <View style={styles.taskContent}>
                 <Text style={styles.taskTitle}>{task.title}</Text>
-                <Text style={styles.taskMeta}>{formatTaskSchedule(task.scheduled_day, task.scheduled_time)}</Text>
+                <Text style={styles.taskMeta}>{formatScheduleLabel(task.scheduled_day, task.scheduled_time)}</Text>
               </View>
             </View>
           ))
@@ -172,32 +172,6 @@ export default function ResolutionDashboardDetailScreen({ route }: Props) {
       </View>
     </ScrollView>
   );
-}
-
-function sortTaskItems(list: TaskItem[]): TaskItem[] {
-  return list
-    .map((task, index) => ({ task, index }))
-    .sort((a, b) => {
-      const aTs = getSortTimestamp(a.task.scheduled_day, a.task.scheduled_time);
-      const bTs = getSortTimestamp(b.task.scheduled_day, b.task.scheduled_time);
-      const aFinite = Number.isFinite(aTs);
-      const bFinite = Number.isFinite(bTs);
-      if (aFinite && bFinite) {
-        if (aTs === bTs) return a.index - b.index;
-        return aTs - bTs;
-      }
-      if (aFinite) return -1;
-      if (bFinite) return 1;
-      return a.index - b.index;
-    })
-    .map((entry) => entry.task);
-}
-
-function formatTaskSchedule(day?: string | null, time?: string | null): string {
-  const dateLabel = formatDisplayDate(day);
-  const timeLabel = formatDisplayTime(time);
-  if (dateLabel && timeLabel) return `${dateLabel} · ${timeLabel}`;
-  return dateLabel ?? timeLabel ?? "Flexible";
 }
 
 const styles = StyleSheet.create({

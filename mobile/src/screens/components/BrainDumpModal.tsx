@@ -31,7 +31,9 @@ export default function BrainDumpModal({ visible, onClose }: Props) {
   const [ack, setAck] = useState<{
     acknowledgement: string;
     actionable: boolean;
-    suggested?: string | null;
+    actionableItems: string[];
+    topics: string[];
+    sentiment: number;
   } | null>(null);
   const inputRef = useRef<TextInput>(null);
 
@@ -56,14 +58,16 @@ export default function BrainDumpModal({ visible, onClose }: Props) {
     try {
       setLoading(true);
       setError(null);
-      const { response } = await submitBrainDump({
+      const { data } = await submitBrainDump({
         user_id: userId!,
         text: trimmed,
       });
       setAck({
-        acknowledgement: response.acknowledgement,
-        actionable: response.actionable,
-        suggested: response.suggested_response,
+        acknowledgement: data.acknowledgement,
+        actionable: data.actionable,
+        actionableItems: data.signals.actionable_items,
+        topics: data.signals.topics,
+        sentiment: data.signals.sentiment_score,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to process that signal. Please try again.");
@@ -112,8 +116,18 @@ export default function BrainDumpModal({ visible, onClose }: Props) {
             <View style={styles.ackCard}>
               <Text style={styles.ackTitle}>Acknowledgement</Text>
               <Text style={styles.ackText}>{ack.acknowledgement}</Text>
-              {ack.suggested ? (
-                <Text style={styles.ackSuggested}>{ack.suggested}</Text>
+              <Text style={styles.ackMeta}>Sentiment: {ack.sentiment.toFixed(2)}</Text>
+              {ack.topics.length ? (
+                <Text style={styles.ackMeta}>Topics: {ack.topics.join(", ")}</Text>
+              ) : null}
+              {ack.actionableItems.length ? (
+                <View style={styles.actionableList}>
+                  {ack.actionableItems.map((item) => (
+                    <Text key={item} style={styles.actionableItem}>
+                      • {item}
+                    </Text>
+                  ))}
+                </View>
               ) : null}
               {ack.actionable ? (
                 <TouchableOpacity style={styles.adjustButton}>
@@ -223,10 +237,16 @@ const styles = StyleSheet.create({
   ackText: {
     color: "#4A5568",
   },
-  ackSuggested: {
+  ackMeta: {
+    color: "#6B7280",
+    marginTop: 4,
+  },
+  actionableList: {
     marginTop: 6,
-    color: "#2D3748",
-    fontStyle: "italic",
+    gap: 4,
+  },
+  actionableItem: {
+    color: "#374151",
   },
   adjustButton: {
     marginTop: 8,

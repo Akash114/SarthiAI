@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
   Platform,
+  ScrollView,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -19,6 +20,13 @@ import { Brain, Target, ShieldAlert, FileText } from "lucide-react-native";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "AgentLog">;
 
+const FILTER_CHIPS = [
+  { label: "All", type: null },
+  { label: "Brain Dumps", type: "brain_dump_analyzed" },
+  { label: "Resolutions", type: "resolution_created" },
+  { label: "Interventions", type: "intervention_generated" },
+];
+
 export default function AgentLogScreen() {
   const navigation = useNavigation<Nav>();
   const { userId, loading: userLoading } = useUserId();
@@ -28,9 +36,19 @@ export default function AgentLogScreen() {
   const [error, setError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [filterType, setFilterType] = useState<string | null>(null);
+  const [isFiltering, setIsFiltering] = useState(false);
 
   const fetchLogs = useCallback(
-    async ({ reset, cursor }: { reset?: boolean; cursor?: string | null } = {}) => {
+    async ({
+      reset,
+      cursor,
+      actionType,
+    }: {
+      reset?: boolean;
+      cursor?: string | null;
+      actionType?: string | null;
+    } = {}) => {
       if (!userId) return;
       if (reset) {
         setRefreshing(true);
@@ -40,8 +58,12 @@ export default function AgentLogScreen() {
         const { items, nextCursor: cursorValue } = await listAgentLog(userId, {
           limit: 50,
           cursor: cursor ?? (reset ? null : undefined),
+          action_type: actionType ?? filterType ?? undefined,
         });
-        setEntries((prev) => (reset ? items : [...prev, ...items]));
+        const activeType = actionType ?? filterType;
+        const filteredItems =
+          activeType && activeType.length ? items.filter((item) => item.action_type === activeType) : items;
+        setEntries((prev) => (reset ? filteredItems : [...prev, ...filteredItems]));
         setNextCursor(cursorValue);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load agent log.");
@@ -51,7 +73,7 @@ export default function AgentLogScreen() {
         setLoadingMore(false);
       }
     },
-    [userId],
+    [userId, filterType],
   );
 
   useEffect(() => {
@@ -60,13 +82,20 @@ export default function AgentLogScreen() {
     }
   }, [fetchLogs, userId, userLoading]);
 
+  const handleFilterChange = (type: string | null) => {
+    if (filterType === type) return;
+    setFilterType(type);
+    setIsFiltering(true);
+    fetchLogs({ reset: true, actionType: type }).finally(() => setIsFiltering(false));
+  };
+
   const handleLoadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     await fetchLogs({ cursor: nextCursor });
   }, [fetchLogs, loadingMore, nextCursor]);
 
-  if (userLoading || (loading && !entries.length)) {
+  if (userLoading || ((loading || isFiltering) && !entries.length)) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color="#6B8DBF" />
@@ -85,6 +114,20 @@ export default function AgentLogScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>System Log</Text>
           <Text style={styles.subtitle}>A transparent record of all interactions and automated decisions.</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            {FILTER_CHIPS.map((chip) => {
+              const active = filterType === chip.type;
+              return (
+                <TouchableOpacity
+                  key={chip.label}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                  onPress={() => handleFilterChange(chip.type)}
+                >
+                  <Text style={[styles.filterText, active && styles.filterTextActive]}>{chip.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
           {error ? (
             <View style={styles.errorBox}>
               <Text style={styles.error}>{error}</Text>
@@ -196,6 +239,27 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     color: "#555",
+  },
+  filterRow: {
+    gap: 8,
+    paddingVertical: 8,
+    paddingRight: 12,
+  },
+  filterChip: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: "#E5E7EB",
+  },
+  filterChipActive: {
+    backgroundColor: "#2D3748",
+  },
+  filterText: {
+    color: "#4B5563",
+    fontWeight: "600",
+  },
+  filterTextActive: {
+    color: "#fff",
   },
   errorBox: {
     backgroundColor: "#fdecea",

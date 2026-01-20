@@ -15,7 +15,7 @@ import type { RootStackParamList } from "../../types/navigation";
 import { TaskItem, updateTaskCompletion, updateTaskNote } from "../api/tasks";
 import { useUserId } from "../state/user";
 import { useTasks } from "../hooks/useTasks";
-import { formatDisplayDate, formatDisplayTime, getSortTimestamp } from "../utils/datetime";
+import { formatScheduleLabel, sortTasksBySchedule } from "../utils/datetime";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "MyWeek">;
 
@@ -45,7 +45,7 @@ export default function MyWeekScreen() {
   const [noteError, setNoteError] = useState<string | null>(null);
 
   const grouped = useMemo<TaskSection[]>(() => {
-    const scheduled = sortTaskItems(tasks.filter((task) => !!task.scheduled_day));
+    const scheduled = sortTasksBySchedule(tasks.filter((task) => !!task.scheduled_day));
     const unscheduled = tasks.filter((task) => !task.scheduled_day);
     const sections: TaskSection[] = [];
     if (scheduled.length) {
@@ -65,7 +65,7 @@ export default function MyWeekScreen() {
         </View>
         <View style={styles.taskContent}>
           <Text style={[styles.title, item.completed && styles.completedText]}>{item.title}</Text>
-          <Text style={styles.meta}>{formatTaskSchedule(item.scheduled_day, item.scheduled_time)}</Text>
+          <Text style={styles.meta}>{formatScheduleLabel(item.scheduled_day, item.scheduled_time)}</Text>
           {item.duration_min ? <Text style={styles.meta}>{item.duration_min} min</Text> : null}
         </View>
       </TouchableOpacity>
@@ -252,32 +252,6 @@ export default function MyWeekScreen() {
       </Modal>
     </View>
   );
-}
-
-function sortTaskItems(list: TaskItem[]): TaskItem[] {
-  return list
-    .map((task, index) => ({ task, index }))
-    .sort((a, b) => {
-      const aTs = getSortTimestamp(a.task.scheduled_day, a.task.scheduled_time);
-      const bTs = getSortTimestamp(b.task.scheduled_day, b.task.scheduled_time);
-      const aFinite = Number.isFinite(aTs);
-      const bFinite = Number.isFinite(bTs);
-      if (aFinite && bFinite) {
-        if (aTs === bTs) return a.index - b.index;
-        return aTs - bTs;
-      }
-      if (aFinite) return -1;
-      if (bFinite) return 1;
-      return a.index - b.index;
-    })
-    .map((entry) => entry.task);
-}
-
-function formatTaskSchedule(day?: string | null, time?: string | null): string {
-  const dateLabel = formatDisplayDate(day);
-  const timeLabel = formatDisplayTime(time);
-  if (dateLabel && timeLabel) return `${dateLabel} · ${timeLabel}`;
-  return dateLabel ?? timeLabel ?? "Flexible";
 }
 
 const styles = StyleSheet.create({
