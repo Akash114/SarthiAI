@@ -71,7 +71,7 @@ def sqlite_override():
 def test_app_runs_with_opik_enabled(monkeypatch, sqlite_override):
     api_key = os.environ["OPIK_API_KEY"]
     monkeypatch.setenv("OPIK_ENABLED", "true")
-    monkeypatch.setenv("OPIK_PROJECT", "flowbuddy-test")
+    monkeypatch.setenv("OPIK_PROJECT", "sarthiai-test")
     monkeypatch.setenv("OPIK_API_KEY", api_key)
 
     import app.core.config as config_module

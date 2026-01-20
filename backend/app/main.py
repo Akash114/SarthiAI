@@ -1,4 +1,4 @@
-"""Main FastAPI application for FlowBuddy backend."""
+"""Main FastAPI application for Sarthi AI backend."""
 from fastapi import FastAPI, Request
 
 from app.api.routes.brain_dump import router as brain_dump_router

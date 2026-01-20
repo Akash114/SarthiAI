@@ -69,7 +69,7 @@ export default function SettingsPermissionsScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Agent Controls</Text>
-      <Text style={styles.subtitle}>You are in charge. Configure how FlowBuddy helps you.</Text>
+      <Text style={styles.subtitle}>You are in charge. Configure how Sarthi AI helps you.</Text>
 
       {error ? (
         <View style={styles.errorBox}>
@@ -89,8 +89,8 @@ export default function SettingsPermissionsScreen() {
             </View>
             <Text style={styles.masterCopy}>
               {prefs.coaching_paused
-                ? "FlowBuddy is in silent mode. No new plans will be generated."
-                : "FlowBuddy is active and monitoring your plan."}
+                ? "Sarthi AI is in silent mode. No new plans will be generated."
+                : "Sarthi AI is active and monitoring your plan."}
             </Text>
             <TouchableOpacity
               style={prefs.coaching_paused ? styles.resumeButton : styles.pauseButton}
@@ -115,7 +115,7 @@ export default function SettingsPermissionsScreen() {
             <Text style={styles.sectionTitle}>Agent Permissions</Text>
             <SettingRow
               label="Weekly plans"
-              description="Allow FlowBuddy to generate weekly plans."
+              description="Allow Sarthi AI to generate weekly plans."
               value={prefs.weekly_plans_enabled}
               onValueChange={(value) => handleToggle("weekly_plans_enabled", value)}
               disabled={savingKey !== null || prefs.coaching_paused}

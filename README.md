@@ -1,4 +1,4 @@
-# FlowBuddy (SRS v2.5)
+# Sarthi AI (SRS v2.5)
 
 Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client. Ticket 0 focuses on health checks, configuration, and docs so Ticket 1 can immediately wire up Alembic migrations.
 
@@ -14,7 +14,7 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
    python3.11 -m venv .venv
    source .venv/bin/activate
    ```
-3. Upgrade packaging tools and install FlowBuddy with dev extras:
+3. Upgrade packaging tools and install Sarthi AI with dev extras:
    ```bash
    python -m pip install --upgrade pip setuptools wheel
    python -m pip install -e backend[dev]
@@ -28,7 +28,7 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
 ## Backend
 1. Ensure Postgres is running, then create the database and apply migrations with the venv's Python:
    ```bash
-   createdb flowbuddy
+   createdb sarthiai
    cd backend
    python -m alembic upgrade head
    ```
@@ -41,7 +41,7 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
    ```bash
    cd backend
    python -m app.worker.scheduler_main
-   # or, if installed as a package: flowbuddy-scheduler
+   # or, if installed as a package: sarthiai-scheduler
    ```
    The worker validates `WEEKLY_JOB_*` env vars at startup. If `SCHEDULER_ENABLED=false`, it logs a warning (“Scheduler worker started but SCHEDULER_ENABLED=false. No jobs will run.”) and exits without scheduling anything.
 
@@ -66,7 +66,7 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
   ```bash
   export OPIK_ENABLED=true
   export OPIK_API_KEY=sk-YOUR-KEY
-  export OPIK_PROJECT=flowbuddy-dev  # optional override
+  export OPIK_PROJECT=sarthiai-dev  # optional override
   ```
 - Once enabled, run the server as usual (`source .venv/bin/activate && cd backend && python -m uvicorn app.main:app --reload`) and Opik will log traces such as `http.health_check` for `/health`, with dot-delimited names reused across domains.
 
@@ -79,7 +79,7 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
     "text": "I'm overwhelmed because my focus resolution is blocked."
   }
   ```
-- FlowBuddy auto-creates the `users` row if it doesn’t exist, extracts signals (emotional state, blockers, references), persists them, and returns an acknowledgement plus the extracted JSON.
+- Sarthi AI auto-creates the `users` row if it doesn’t exist, extracts signals (emotional state, blockers, references), persists them, and returns an acknowledgement plus the extracted JSON.
 - Example curl:
   ```bash
   source .venv/bin/activate
@@ -145,7 +145,7 @@ Hackathon-friendly scaffold containing a FastAPI backend plus Expo mobile client
 - Opik-enabled tests (requires valid `OPIK_API_KEY`):
   ```bash
   export OPIK_ENABLED=true
-  export OPIK_PROJECT=flowbuddy-test
+  export OPIK_PROJECT=sarthiai-test
   python -m pytest backend/tests/test_observability_enabled.py
   ```
 

@@ -1,4 +1,4 @@
-"""Plan evaluation and guardrail enforcement for Sarathi AI."""
+"""Plan evaluation and guardrail enforcement for Sarthi AI."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

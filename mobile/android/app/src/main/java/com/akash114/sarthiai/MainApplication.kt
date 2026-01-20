@@ -1,4 +1,4 @@
-package com.akash114.flowbuddy
+package com.akash114.sarthiai
 
 import android.app.Application
 import android.content.res.Configuration

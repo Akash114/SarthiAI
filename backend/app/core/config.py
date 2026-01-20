@@ -7,13 +7,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    app_name: str = "FlowBuddy Backend"
+    app_name: str = "Sarthi AI Backend"
     debug: bool = False
     log_level: str = "INFO"
-    database_url: str = "postgresql+psycopg2://alion@localhost:5432/flowbuddy"
+    database_url: str = "postgresql+psycopg2://alion@localhost:5432/sarthiai"
     opik_enabled: bool = False
     opik_api_key: str | None = None
-    opik_project: str = "flowbuddy"
+    opik_project: str = "sarthiai"
     scheduler_enabled: bool = True
     scheduler_timezone: str = "UTC"
     weekly_job_day: int = 6

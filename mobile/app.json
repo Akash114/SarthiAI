@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "FlowBuddy",
-    "slug": "flowbuddy",
+    "name": "Sarthi AI",
+    "slug": "sarthiai",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "flowbuddy",
+    "scheme": "sarthiai",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
@@ -22,7 +22,7 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.akash114.flowbuddy"
+      "package": "com.akash114.sarthiai"
     },
     "web": {
       "bundler": "metro"

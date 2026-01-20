@@ -31,7 +31,7 @@ function App() {
     <NavigationContainer>
       <StatusBar style="dark" />
       <Stack.Navigator>
-        <Stack.Screen name="Home" component={HomeScreen} options={{ title: "FlowBuddy" }} />
+        <Stack.Screen name="Home" component={HomeScreen} options={{ title: "Sarthi AI" }} />
         <Stack.Screen name="BrainDump" component={BrainDumpScreen} options={{ title: "Brain Dump" }} />
         <Stack.Screen
           name="DraftPlans"

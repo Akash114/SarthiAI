@@ -1,4 +1,4 @@
-"""Initial FlowBuddy schema."""
+"""Initial Sarthi AI schema."""
 from __future__ import annotations
 
 from alembic import op

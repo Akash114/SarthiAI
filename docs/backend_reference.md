@@ -1,4 +1,4 @@
-# FlowBuddy Backend Reference
+# Sarthi AI Backend Reference
 
 This document summarizes the backend architecture described in the README plus the current FastAPI implementation under `backend/app`. Use it as a quick onboarding reference for schemas, endpoints, and background workers.
 

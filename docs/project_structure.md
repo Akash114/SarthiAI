@@ -1,4 +1,4 @@
-# FlowBuddy Project Structure
+# Sarthi AI Project Structure
 
 The diagram below captures the repository layout from the workspace root, focusing on source-controlled assets. Generated directories such as `.git`, `backend/.pgdata`, `mobile/node_modules`, caches, and `__pycache__` folders are omitted for readability.
 
@@ -91,7 +91,7 @@ The diagram below captures the repository layout from the workspace root, focusi
 │   │   │   └── weekly_planner.py
 │   │   └── worker
 │   │       └── scheduler_main.py
-│   ├── flowbuddy_backend.egg-info
+│   ├── sarthiai_backend.egg-info
 │   │   ├── PKG-INFO
 │   │   ├── SOURCES.txt
 │   │   ├── dependency_links.txt
@@ -202,7 +202,7 @@ The diagram below captures the repository layout from the workspace root, focusi
     │       │   ├── java
     │       │   │   └── com
     │       │   │       └── akash114
-    │       │   │           └── flowbuddy
+    │       │   │           └── sarthiai
     │       │   │               ├── MainActivity.kt
     │       │   │               └── MainApplication.kt
     │       │   └── res

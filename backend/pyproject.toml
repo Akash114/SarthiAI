@@ -3,10 +3,10 @@ requires = ["setuptools>=66", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flowbuddy-backend"
+name = "sarthiai-backend"
 version = "0.1.0"
-description = "FlowBuddy FastAPI service"
-authors = [{ name = "FlowBuddy Team" }]
+description = "Sarthi AI FastAPI service"
+authors = [{ name = "Sarthi AI Team" }]
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "fastapi>=0.109.0",
@@ -26,7 +26,7 @@ dev = [
 ]
 
 [project.scripts]
-flowbuddy-scheduler = "app.worker.scheduler_main:main"
+sarthiai-scheduler = "app.worker.scheduler_main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

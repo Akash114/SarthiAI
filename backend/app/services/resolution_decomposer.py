@@ -526,9 +526,9 @@ def _build_prompts(
     refined_goal: Dict[str, Any],
 ) -> tuple[str, str]:
     schema_json = json.dumps(ResolutionPlan.model_json_schema(), indent=2)
-    # SYSTEM PROMPT: The "Sarathi" Persona
+    # SYSTEM PROMPT: The "Sarthi" Persona
     system_prompt = (
-        "You are Sarathi AI, a wise, supportive charioteer who values consistency over intensity. "
+        "You are Sarthi AI, a wise, supportive charioteer who values consistency over intensity. "
         "Your philosophy is Supportive Autonomy: clarity reduces anxiety and small wins compound.\n\n"
         "Role: Break down vague aspirations into a concrete, scientifically sound roadmap. "
         "You design behavior-change protocols, not generic to-do lists. "
@@ -548,7 +548,7 @@ def _build_prompts(
         else ""
     )
     hard_constraints = (
-        "### HARD CONSTRAINTS (FlowBuddy rejects plans that break these)\n"
+        "### HARD CONSTRAINTS (Sarthi AI rejects plans that break these)\n"
         f"- Week 1 workload must stay between {minutes_low}-{minutes_high} minutes per day and never exceed {weekly_cap} minutes per week.\n"
         f"- Keep daily task counts between {tasks_low}-{tasks_high}; never schedule more than {tasks_high} tasks on a single day.\n"
         f"{cadence_hint}"
@@ -632,7 +632,7 @@ def _repair_plan_via_llm(
     request_id: Optional[str],
 ) -> Optional[Dict[str, Any]]:
     repair_prompt = (
-        "The earlier plan violated FlowBuddy guardrails. Please revise it minimally so it fits the effort band budgets "
+        "The earlier plan violated Sarthi AI guardrails. Please revise it minimally so it fits the effort band budgets "
         "and resolves the issues called out below. Preserve the supportive tone and keep tasks concrete.\n\n"
         f"Evaluation Summary:\n{json.dumps(evaluation.to_dict(), indent=2)}\n\n"
         f"Original Plan JSON:\n{json.dumps(failed_plan, indent=2)}"
@@ -857,7 +857,7 @@ def _fallback_plan(
     refined_goal: Dict[str, Any],
 ) -> dict:
     """Return a deterministic plan when LLM calls are unavailable."""
-    title = user_input.strip() or "FlowBuddy Goal"
+    title = user_input.strip() or "Sarthi AI Goal"
     weeks = max(4, min(12, duration_weeks or 8))
     specialty_key = _detect_specialty_key(user_input, resolution_type)
     specialty_config = SPECIALTY_CONFIG.get(specialty_key, SPECIALTY_CONFIG["generic"])
@@ -908,7 +908,7 @@ def _fallback_plan(
 
     plan = ResolutionPlan(
         resolution_title=title if len(title) < 120 else f"{title[:117]}...",
-        why_this_matters="Sarathi AI reminder: name the emotional stake so motivation feels grounded.",
+        why_this_matters="Sarthi AI reminder: name the emotional stake so motivation feels grounded.",
         duration_weeks=weeks,
         milestones=milestones,
         week_1_tasks=[TaskDraft(**_public_task_data(task)) for task in enriched_tasks],

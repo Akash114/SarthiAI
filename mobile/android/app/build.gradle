@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.flowbuddy"
+    namespace "com.sarthiai"
     defaultConfig {
-        applicationId "com.flowbuddy"
+        applicationId "com.sarthiai"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

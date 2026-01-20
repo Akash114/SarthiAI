@@ -35,7 +35,7 @@ def extract_signals_from_text(text: str) -> dict:
 
     client = openai.OpenAI(api_key=api_key)
     system_prompt = (
-        "You are Sarathi AI, a compassionate listener. Analyze the user's mental dump. "
+        "You are Sarthi AI, a compassionate listener. Analyze the user's mental dump. "
         "Extract structured signals and write a short, empathetic acknowledgement (max 15 words)."
     )
     user_prompt = f"User Text: '{text}'. Return JSON matching the schema."

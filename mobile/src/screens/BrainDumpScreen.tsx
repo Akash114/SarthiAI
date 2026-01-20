@@ -97,7 +97,7 @@ export default function BrainDumpScreen() {
         {step === "INTAKE" ? (
           <>
             <Text style={styles.title}>What&apos;s on your mind?</Text>
-            <Text style={styles.helper}>FlowBuddy listens but won&apos;t add tasks unless you ask.</Text>
+            <Text style={styles.helper}>Sarthi AI listens but won&apos;t add tasks unless you ask.</Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
@@ -158,7 +158,7 @@ export default function BrainDumpScreen() {
             <View style={styles.actionArea}>
               {result.response.signals.actionable_items.length ? (
                 <>
-                  <Text style={styles.actionableText}>Sarathi noticed these next steps:</Text>
+                  <Text style={styles.actionableText}>Sarthi AI noticed these next steps:</Text>
                   {result.response.signals.actionable_items.map((item) => (
                     <Text key={item} style={styles.suggestedAction}>
                       • {item}

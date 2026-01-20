@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { generateUUID, isValidUUID } from "../utils/uuid";
 
-const STORAGE_KEY = "flowbuddy:user_id";
+const STORAGE_KEY = "sarthiai:user_id";
 
 export function useUserId(): { userId: string | null; loading: boolean } {
   const generatedRef = useRef<string | null>(null);

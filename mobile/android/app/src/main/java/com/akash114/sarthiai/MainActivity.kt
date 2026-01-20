@@ -1,4 +1,4 @@
-package com.akash114.flowbuddy
+package com.akash114.sarthiai
 
 import android.os.Build
 import android.os.Bundle

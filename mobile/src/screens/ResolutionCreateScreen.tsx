@@ -125,7 +125,7 @@ export default function ResolutionCreateScreen() {
             <Text style={[styles.pillText, customVisible && styles.pillTextActive]}>Custom</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.helperSmall}>FlowBuddy needs at least 4 weeks to help you build a habit loop.</Text>
+        <Text style={styles.helperSmall}>Sarthi AI needs at least 4 weeks to help you build a habit loop.</Text>
 
         {customVisible ? (
           <TextInput

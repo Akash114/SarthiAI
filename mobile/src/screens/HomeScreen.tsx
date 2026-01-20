@@ -242,7 +242,7 @@ export default function HomeScreen() {
                 ) : (
                   <View style={[styles.focusCard, styles.emptyFocusCard]}>
                     <Text style={styles.focusTitle}>No active goals yet</Text>
-                    <Text style={styles.focusWindow}>Create a goal and FlowBuddy will highlight it here.</Text>
+                    <Text style={styles.focusWindow}>Create a goal and Sarthi AI will highlight it here.</Text>
                   </View>
                 )}
               </ScrollView>
