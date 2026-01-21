@@ -1,11 +1,14 @@
 """Basic intervention preview service."""
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Dict, List, Tuple
 from uuid import UUID
 
+import openai
 from sqlalchemy.orm import Session
 
 from app.api.schemas.interventions import InterventionCard, InterventionOption, SlippagePayload
@@ -40,7 +43,7 @@ def get_intervention_preview(db: Session, user_id: UUID) -> InterventionPreview:
     stats = _collect_slippage_stats(tasks)
     flagged, reason = _determine_slippage(stats)
 
-    card = _build_card(stats) if flagged else None
+    card = _determine_intervention_card(stats) if flagged else None
 
     slippage_payload = SlippagePayload(
         flagged=flagged,
@@ -182,6 +185,44 @@ def _determine_slippage(stats: Dict[str, float | int]) -> Tuple[bool, str]:
     if missed >= 2:
         return True, "Multiple scheduled tasks were missed this week."
     return False, "Looks on track. Keep the gentle cadence."
+
+
+def _determine_intervention_card(stats: Dict[str, float | int]) -> InterventionCard:
+    """Use Sarathi AI to craft a personalized intervention or fall back to heuristics."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return _build_card(stats)
+
+    client = openai.OpenAI(api_key=api_key)
+    completion_pct = int((stats.get("completion_rate") or 0) * 100)
+    missed = int(stats.get("missed_scheduled") or 0)
+    total = int(stats.get("total") or 0)
+    system_prompt = (
+        "You are Sarathi AI. The user is struggling. Analyze the data and generate a supportive intervention card "
+        "with 3 distinct options. Offer one for getting back on track, one for adjusting the goal, and one for pausing."
+    )
+    user_prompt = (
+        f"User missed {missed} scheduled tasks out of {total}. "
+        f"Completion rate last 7 days: {completion_pct}%. "
+        "Return JSON that matches the InterventionCard schema with fields title, message, and "
+        "options (array of {key,label,details}). Keep advice kind and actionable."
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            response_format={"type": "json_object"},
+            temperature=0.4,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        content = response.choices[0].message.content or "{}"
+        payload = json.loads(content)
+        return InterventionCard.model_validate(payload)
+    except Exception:
+        return _build_card(stats)
 
 
 def _build_card(stats: Dict[str, float | int]) -> InterventionCard:

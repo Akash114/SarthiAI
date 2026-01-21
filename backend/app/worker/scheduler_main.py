@@ -57,11 +57,14 @@ def main() -> None:
     scheduler = BackgroundScheduler(timezone=settings.scheduler_timezone)
     _register_jobs(scheduler)
     logger.info(
-        "Scheduler enabled (timezone=%s, weekly_day=%s, weekly_time=%02d:%02d)",
+        "Scheduler enabled (tz=%s, weekly_plan=%s %02d:%02d, interventions=%s %02d:%02d)",
         settings.scheduler_timezone,
         settings.weekly_job_day,
         settings.weekly_job_hour,
         settings.weekly_job_minute,
+        settings.intervention_job_day,
+        settings.intervention_job_hour,
+        settings.intervention_job_minute,
     )
     scheduler.start()
     if settings.jobs_run_on_startup:
@@ -87,11 +90,12 @@ def main() -> None:
 
 
 def _register_jobs(scheduler: BackgroundScheduler) -> None:
-    day_of_week = str(settings.weekly_job_day)
+    weekly_day = str(settings.weekly_job_day)
+    intervention_day = str(settings.intervention_job_day)
     scheduler.add_job(
         _run_weekly_plan_job,
         trigger="cron",
-        day_of_week=day_of_week,
+        day_of_week=weekly_day,
         hour=settings.weekly_job_hour,
         minute=settings.weekly_job_minute,
         id="weekly_plan_job",
@@ -100,15 +104,21 @@ def _register_jobs(scheduler: BackgroundScheduler) -> None:
     scheduler.add_job(
         _run_intervention_job,
         trigger="cron",
-        day_of_week=day_of_week,
-        hour=settings.weekly_job_hour,
-        minute=settings.weekly_job_minute,
+        day_of_week=intervention_day,
+        hour=settings.intervention_job_hour,
+        minute=settings.intervention_job_minute,
         id="interventions_job",
         replace_existing=True,
     )
     logger.info(
-        "Registered scheduler jobs: weekly_plan_job, interventions_job (tz=%s)",
+        "Registered jobs (tz=%s): weekly_plan=%s %02d:%02d, interventions=%s %02d:%02d",
         settings.scheduler_timezone,
+        weekly_day,
+        settings.weekly_job_hour,
+        settings.weekly_job_minute,
+        intervention_day,
+        settings.intervention_job_hour,
+        settings.intervention_job_minute,
     )
 
 
@@ -176,6 +186,12 @@ def _validate_config() -> None:
         raise ValueError("WEEKLY_JOB_HOUR must be between 0 and 23")
     if not (0 <= settings.weekly_job_minute <= 59):
         raise ValueError("WEEKLY_JOB_MINUTE must be between 0 and 59")
+    if not (0 <= settings.intervention_job_day <= 6):
+        raise ValueError("INTERVENTION_JOB_DAY must be between 0 and 6")
+    if not (0 <= settings.intervention_job_hour <= 23):
+        raise ValueError("INTERVENTION_JOB_HOUR must be between 0 and 23")
+    if not (0 <= settings.intervention_job_minute <= 59):
+        raise ValueError("INTERVENTION_JOB_MINUTE must be between 0 and 59")
 
 
 def _wait_forever(stop_event: threading.Event) -> None:

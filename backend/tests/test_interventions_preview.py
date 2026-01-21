@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+import json
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
@@ -71,7 +72,7 @@ def _seed_task(session_factory, **kwargs):
         session.close()
 
 
-def test_intervention_flagged_for_slippage(client):
+def test_intervention_flagged_for_slippage(client, monkeypatch):
     test_client, session_factory = client
     user_id = _seed_user(session_factory)
     today = date.today()
@@ -85,12 +86,43 @@ def test_intervention_flagged_for_slippage(client):
             completed=False,
         )
 
+    class DummyChoices:
+        def __init__(self, content: str):
+            self.message = type("obj", (), {"content": content})
+
+    class DummyCompletion:
+        def __init__(self, payload):
+            self.choices = [DummyChoices(json.dumps(payload))]
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        class chat:  # type: ignore[valid-type]
+            class completions:  # type: ignore[valid-type]
+                @staticmethod
+                def create(*args, **kwargs):
+                    payload = {
+                        "title": "Let's Catch Up",
+                        "message": "You’ve been quiet, so here are a few options.",
+                        "options": [
+                            {"key": "get_back", "label": "Get Back on Track", "details": "Schedule a light reset session."},
+                            {"key": "adjust_goal", "label": "Adjust the Goal", "details": "Dial the weekly target down."},
+                            {"key": "pause", "label": "Pause Coaching", "details": "Take a compassionate pause."},
+                        ],
+                    }
+                    return DummyCompletion(payload)
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("openai.OpenAI", DummyClient)
+
     resp = test_client.get("/interventions/preview", params={"user_id": str(user_id)})
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["slippage"]["flagged"] is True
     assert payload["card"] is not None
-    assert payload["card"]["options"]
+    assert payload["card"]["title"] == "Let's Catch Up"
+    assert payload["card"]["options"][0]["key"] == "get_back"
 
 
 def test_intervention_not_flagged_when_on_track(client):

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     weekly_job_day: int = 6
     weekly_job_hour: int = 9
     weekly_job_minute: int = 0
+    intervention_job_day: int = 3
+    intervention_job_hour: int = 19
+    intervention_job_minute: int = 0
     jobs_run_on_startup: bool = True
     notifications_enabled: bool = False
     notifications_provider: str = "noop"
