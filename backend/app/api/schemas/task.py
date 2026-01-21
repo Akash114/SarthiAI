@@ -8,6 +8,16 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
+class TaskCreateRequest(BaseModel):
+    user_id: UUID
+    title: str
+    resolution_id: Optional[UUID] = None
+    scheduled_day: Optional[date] = None
+    scheduled_time: Optional[time] = None
+    duration_min: Optional[int] = None
+    note: Optional[str] = None
+
+
 class TaskSummary(BaseModel):
     id: UUID
     resolution_id: Optional[UUID]

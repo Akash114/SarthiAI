@@ -10,6 +10,7 @@ from sqlalchemy import asc, nulls_last
 from sqlalchemy.orm import Session
 
 from app.api.schemas.task import (
+    TaskCreateRequest,
     TaskSummary,
     TaskUpdateRequest,
     TaskUpdateResponse,
@@ -19,12 +20,108 @@ from app.api.schemas.task import (
 )
 from app.db.deps import get_db
 from app.db.models.agent_action_log import AgentActionLog
+from app.db.models.resolution import Resolution
 from app.db.models.task import Task
 from app.observability.metrics import log_metric
 from app.observability.tracing import trace
 from app.services.resolution_tasks import ALLOWED_SOURCES
 
 router = APIRouter()
+
+
+@router.post("/tasks", response_model=TaskSummary, status_code=status.HTTP_201_CREATED, tags=["tasks"])
+def create_task(
+    payload: TaskCreateRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+) -> TaskSummary:
+    """Create a manual or resolution-linked task."""
+    request_id = getattr(http_request.state, "request_id", None)
+    metadata: Dict[str, Any] = {
+        "route": "/tasks",
+        "user_id": str(payload.user_id),
+        "resolution_id": str(payload.resolution_id) if payload.resolution_id else None,
+        "request_id": request_id,
+    }
+
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="title must not be empty")
+
+    resolution_id = payload.resolution_id
+    if resolution_id:
+        resolution = db.get(Resolution, resolution_id)
+        if not resolution:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resolution not found")
+        if resolution.user_id != payload.user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Resolution does not belong to user")
+
+    trimmed_note = payload.note.strip() if isinstance(payload.note, str) else None
+    task_metadata = {
+        "source": "manual",
+        "draft": False,
+    }
+    if trimmed_note:
+        task_metadata["note"] = trimmed_note
+
+    start_time = datetime.now(timezone.utc)
+    try:
+        with trace(
+            "task.create",
+            metadata=metadata,
+            user_id=str(payload.user_id),
+            request_id=request_id,
+        ):
+            action_payload = {
+                "task_id": None,
+                "resolution_id": str(resolution_id) if resolution_id else None,
+                "request_id": request_id,
+            }
+            task = Task(
+                user_id=payload.user_id,
+                resolution_id=resolution_id,
+                title=title,
+                scheduled_day=payload.scheduled_day,
+                scheduled_time=payload.scheduled_time,
+                duration_min=payload.duration_min,
+                metadata_json=task_metadata,
+                completed=False,
+                completed_at=None,
+            )
+            db.add(task)
+
+            log_entry = AgentActionLog(
+                user_id=payload.user_id,
+                action_type="task_created_manually",
+                action_payload=action_payload,
+                reason="Manual task created",
+                undo_available=True,
+            )
+            db.add(log_entry)
+            db.flush()
+            action_payload["task_id"] = str(task.id)
+            log_entry.action_payload = action_payload
+            db.commit()
+            db.refresh(task)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+    latency_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+    log_metric(
+        "task.create.success",
+        1,
+        metadata={"user_id": str(payload.user_id)},
+    )
+    log_metric(
+        "task.create.latency_ms",
+        latency_ms,
+        metadata={"user_id": str(payload.user_id)},
+    )
+    return _serialize_task(task)
 
 
 @router.get("/tasks", response_model=List[TaskSummary], tags=["tasks"])
@@ -34,6 +131,7 @@ def list_tasks(
     status: str = Query("active", pattern="^(active|draft|all)$"),
     from_: Optional[date] = Query(default=None, alias="from"),
     to: Optional[date] = Query(default=None),
+    resolution_id: Optional[UUID] = Query(default=None, description="Filter by resolution"),
     db: Session = Depends(get_db),
 ) -> List[TaskSummary]:
     """List tasks for a user with optional status and date filtering."""
@@ -46,6 +144,7 @@ def list_tasks(
         "from": from_.isoformat() if from_ else None,
         "to": to.isoformat() if to else None,
         "request_id": request_id,
+        "resolution_id": str(resolution_id) if resolution_id else None,
     }
 
     start_tasks: List[Task] = []
@@ -56,6 +155,8 @@ def list_tasks(
         request_id=request_id,
     ):
         query = db.query(Task).filter(Task.user_id == user_id)
+        if resolution_id:
+            query = query.filter(Task.resolution_id == resolution_id)
 
         tasks = query.order_by(
             nulls_last(asc(Task.scheduled_day)),

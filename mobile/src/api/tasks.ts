@@ -31,6 +31,7 @@ type ListOptions = {
   status?: "active" | "draft" | "all";
   from?: string;
   to?: string;
+  resolution_id?: string;
 };
 
 export async function listTasks(userId: string, options: ListOptions = {}): Promise<{
@@ -41,6 +42,7 @@ export async function listTasks(userId: string, options: ListOptions = {}): Prom
   if (options.status) params.append("status", options.status);
   if (options.from) params.append("from", options.from);
   if (options.to) params.append("to", options.to);
+  if (options.resolution_id) params.append("resolution_id", options.resolution_id);
 
   const { data, response } = await apiRequest<TaskItem[]>(`/tasks?${params.toString()}`);
   return {
@@ -103,4 +105,30 @@ export async function updateTaskNote(
     result: data,
     requestId: data.request_id || response.headers.get("X-Request-Id"),
   };
+}
+
+export async function createTask(payload: {
+  user_id: string;
+  title: string;
+  scheduled_day?: string | null;
+  scheduled_time?: string | null;
+  duration_min?: number | null;
+  note?: string | null;
+  resolution_id?: string | null;
+}): Promise<TaskItem> {
+  const body: Record<string, unknown> = {
+    user_id: payload.user_id,
+    title: payload.title,
+  };
+  if (payload.scheduled_day) body.scheduled_day = payload.scheduled_day;
+  if (payload.scheduled_time) body.scheduled_time = payload.scheduled_time;
+  if (typeof payload.duration_min === "number") body.duration_min = payload.duration_min;
+  if (payload.note !== undefined) body.note = payload.note;
+  if (payload.resolution_id) body.resolution_id = payload.resolution_id;
+
+  const { data } = await apiRequest<TaskItem>("/tasks", {
+    method: "POST",
+    body,
+  });
+  return data;
 }

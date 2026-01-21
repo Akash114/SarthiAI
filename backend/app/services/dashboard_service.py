@@ -92,6 +92,7 @@ def get_dashboard_data(db: Session, user_id: UUID) -> List[DashboardResolution]:
                 duration_weeks=resolution.duration_weeks,
                 status=resolution.status,
                 week=week,
+                current_week=_current_week_index(resolution, today),
                 tasks=TaskStats(
                     total=total,
                     completed=completed,
@@ -104,3 +105,24 @@ def get_dashboard_data(db: Session, user_id: UUID) -> List[DashboardResolution]:
         )
 
     return entries
+
+
+def _current_week_index(resolution: Resolution, today: date) -> int:
+    metadata = resolution.metadata_json or {}
+    start_iso = metadata.get("approved_at") or metadata.get("plan_generated_at")
+    start_date = _parse_metadata_date(start_iso) or (resolution.created_at.date() if resolution.created_at else today)
+    if start_date > today:
+        start_date = today
+    weeks_elapsed = max(0, (today - start_date).days // 7)
+    total = resolution.duration_weeks or 12
+    return max(1, min(total, weeks_elapsed + 1))
+
+
+def _parse_metadata_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.date()

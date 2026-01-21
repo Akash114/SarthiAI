@@ -26,4 +26,5 @@ export type RootStackParamList = {
   TaskEdit: {
     taskId: string;
   };
+  TaskCreate: undefined;
 };

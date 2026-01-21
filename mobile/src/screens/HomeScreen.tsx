@@ -3,7 +3,7 @@ import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, Toucha
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Settings, Plus, Brain, Target, Check, Calendar, Shield } from "lucide-react-native";
+import { Settings, Plus, Brain, Target, Check, Calendar, Shield, CheckSquare } from "lucide-react-native";
 import * as dashboardApi from "../api/dashboard";
 import type { DashboardResponse } from "../api/dashboard";
 import * as tasksApi from "../api/tasks";
@@ -26,6 +26,7 @@ interface DashboardResolution {
   id: string;
   title: string;
   completion_rate: number;
+  current_week: number;
   active_week_window: string;
   task_stats: { completed: number; total: number };
 }
@@ -50,6 +51,7 @@ export default function HomeScreen() {
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [praise, setPraise] = useState<string | null>(null);
+  const [taskTab, setTaskTab] = useState<"remaining" | "completed">("remaining");
   const praiseOpacity = useRef(new Animated.Value(0)).current;
 
   const greeting = useMemo(() => getGreeting(new Date()), []);
@@ -107,18 +109,23 @@ export default function HomeScreen() {
     }, [fetchData, userLoading, userId]),
   );
 
-  const sortedTasks = useMemo(() => {
-    return [...todayFlow].sort((a, b) => {
-      if (a.is_completed !== b.is_completed) return a.is_completed ? 1 : -1;
-      if (!a.is_completed && !b.is_completed) {
-        if (a.scheduled_time && b.scheduled_time) return a.scheduled_time.localeCompare(b.scheduled_time);
-        if (a.scheduled_time) return -1;
-        if (b.scheduled_time) return 1;
-        return a.title.localeCompare(b.title);
-      }
-      return a.title.localeCompare(b.title);
-    });
-  }, [todayFlow]);
+  const dayFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      }),
+    [],
+  );
+
+  const remainingTasks = useMemo(() => sortFlowTasks(todayFlow.filter((task) => !task.is_completed)), [todayFlow]);
+  const completedTasks = useMemo(() => sortFlowTasks(todayFlow.filter((task) => task.is_completed)), [todayFlow]);
+  const visibleTasks = useMemo(
+    () => (taskTab === "remaining" ? remainingTasks : completedTasks),
+    [taskTab, remainingTasks, completedTasks],
+  );
+  const allDone = todayFlow.length > 0 && remainingTasks.length === 0;
 
   const sortedFocus = useMemo(() => {
     return [...focusList].sort((a, b) => {
@@ -173,25 +180,35 @@ export default function HomeScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={styles.greeting}>{greeting}, Alex</Text>
-              <Text style={styles.date}>{subtitleDate}</Text>
-              <View style={styles.coachingRow}>
-                <TouchableOpacity style={styles.coachingButton} onPress={() => navigation.navigate("WeeklyPlan")}>
-                  <Calendar size={20} color="#4A5568" />
-                  <Text style={styles.coachingText}>Weekly Plan</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.coachingButton} onPress={() => navigation.navigate("Interventions")}>
-                  <Shield size={20} color="#4A5568" />
-                  <Text style={styles.coachingText}>Interventions</Text>
+              <View style={styles.headerRow}>
+                <View>
+                  <Text style={styles.greeting}>{greeting}, Alex</Text>
+                  <Text style={styles.date}>{subtitleDate}</Text>
+                  <View style={styles.coachingRow}>
+                    <TouchableOpacity style={styles.coachingButton} onPress={() => navigation.navigate("WeeklyPlan")}>
+                      <View style={styles.coachingIcon}>
+                        <Calendar size={20} color="#9FE4FF" />
+                      </View>
+                      <Text style={styles.coachingText}>Weekly Plan</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.coachingButton} onPress={() => navigation.navigate("MyWeek")}>
+                      <View style={styles.coachingIcon}>
+                        <CheckSquare size={20} color="#FFD3A4" />
+                      </View>
+                      <Text style={styles.coachingText}>My Week</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.coachingButton} onPress={() => navigation.navigate("Interventions")}>
+                      <View style={styles.coachingIcon}>
+                        <Shield size={20} color="#C2F8C2" />
+                      </View>
+                      <Text style={styles.coachingText}>Coaching</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate("SettingsPermissions")}>
+                  <Settings color="#2D3748" size={24} />
                 </TouchableOpacity>
               </View>
-            </View>
-            <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate("SettingsPermissions")}>
-              <Settings color="#2D3748" size={24} />
-            </TouchableOpacity>
-          </View>
 
           {error ? (
             <Text style={styles.errorText}>{error}</Text>
@@ -251,8 +268,27 @@ export default function HomeScreen() {
                 <Text style={styles.sectionTitle}>Today&apos;s Flow</Text>
               </View>
               <View>
-                {sortedTasks.length ? (
-                  sortedTasks.map((task) => (
+                <View style={styles.taskTabs}>
+                  <TouchableOpacity
+                    style={[styles.taskTabButton, taskTab === "remaining" && styles.taskTabActive]}
+                    onPress={() => setTaskTab("remaining")}
+                  >
+                    <Text style={[styles.taskTabText, taskTab === "remaining" && styles.taskTabActiveText]}>
+                      Remaining ({remainingTasks.length})
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.taskTabButton, taskTab === "completed" && styles.taskTabActive]}
+                    onPress={() => setTaskTab("completed")}
+                  >
+                    <Text style={[styles.taskTabText, taskTab === "completed" && styles.taskTabActiveText]}>
+                      Completed ({completedTasks.length})
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {visibleTasks.length ? (
+                  visibleTasks.map((task) => (
                     <View key={task.id} style={[styles.taskCard, task.is_completed && styles.taskCardCompleted]}>
                       <TouchableOpacity
                         style={styles.taskBody}
@@ -287,10 +323,33 @@ export default function HomeScreen() {
                     </View>
                   ))
                 ) : (
-                  <View style={styles.emptyTasksCard}>
-                    <Text style={styles.emptyTasksTitle}>Nothing scheduled</Text>
-                    <Text style={styles.emptyTasksSubtitle}>Add a goal or capture a brain dump to plan your day.</Text>
-                  </View>
+                  <>
+                    {taskTab === "remaining" ? (
+                      <View style={styles.emptyTasksCard}>
+                        {allDone ? (
+                          <>
+                            <Text style={styles.emojiCelebration}>🎉</Text>
+                            <Text style={styles.emptyTasksTitle}>All done for today!</Text>
+                            <Text style={styles.emptyTasksSubtitle}>
+                              Celebrate the momentum or add a quick extra task.
+                            </Text>
+                          </>
+                        ) : (
+                          <>
+                            <Text style={styles.emptyTasksTitle}>Nothing scheduled</Text>
+                            <Text style={styles.emptyTasksSubtitle}>
+                              Add a goal, brain dump, or create a task to guide today.
+                            </Text>
+                          </>
+                        )}
+                      </View>
+                    ) : (
+                      <View style={styles.emptyTasksCard}>
+                        <Text style={styles.emptyTasksTitle}>No completed tasks yet</Text>
+                        <Text style={styles.emptyTasksSubtitle}>Check items off to see them here.</Text>
+                      </View>
+                    )}
+                  </>
                 )}
               </View>
             </>
@@ -301,6 +360,16 @@ export default function HomeScreen() {
         <View style={styles.fabContainer}>
           {fabOpen ? (
             <View style={styles.fabOptions}>
+              <TouchableOpacity
+                style={[styles.fabPill, styles.taskPill]}
+                onPress={() => {
+                  toggleFab();
+                  navigation.navigate("TaskCreate");
+                }}
+              >
+                <CheckSquare color="#fff" size={18} />
+                <Text style={styles.fabPillText}>New Task</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.fabPill, styles.goalPill]}
                 onPress={() => {
@@ -364,6 +433,7 @@ function mapDashboard(dashboard: DashboardResponse): DashboardResolution[] {
     id: resolution.resolution_id,
     title: resolution.title,
     completion_rate: resolution.completion_rate,
+    current_week: resolution.current_week,
     active_week_window: formatWeekWindow(resolution.week.start, resolution.week.end),
     task_stats: {
       completed: resolution.tasks.completed,
@@ -474,23 +544,34 @@ const styles = StyleSheet.create({
   },
   coachingButton: {
     flex: 1,
-    flexDirection: "row",
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 10,
     borderRadius: 16,
-    backgroundColor: "#fff",
+    backgroundColor: "#1D2435",
     borderWidth: 1,
-    borderColor: "#EDF2F7",
+    borderColor: "#2F3A54",
     shadowColor: "#000",
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.12,
     shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 4 },
+  },
+  coachingIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
   coachingText: {
     fontWeight: "600",
-    color: "#425466",
+    textAlign: "center",
+    flexShrink: 1,
+    color: "#fff",
   },
   settingsButton: {
     padding: 8,
@@ -681,6 +762,36 @@ const styles = StyleSheet.create({
     color: "#718096",
     marginTop: 6,
   },
+  emojiCelebration: {
+    fontSize: 40,
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  taskTabs: {
+    flexDirection: "row",
+    marginBottom: 12,
+    gap: 8,
+  },
+  taskTabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  taskTabActive: {
+    backgroundColor: "#1a73e8",
+    borderColor: "#1a73e8",
+  },
+  taskTabText: {
+    fontWeight: "600",
+    color: "#475467",
+  },
+  taskTabActiveText: {
+    color: "#fff",
+  },
   fabContainer: {
     position: "absolute",
     bottom: 24,
@@ -703,6 +814,9 @@ const styles = StyleSheet.create({
   },
   brainPill: {
     backgroundColor: "#3B82F6",
+  },
+  taskPill: {
+    backgroundColor: "#EC7B3A",
   },
   fabPillText: {
     color: "#fff",

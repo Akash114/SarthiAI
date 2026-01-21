@@ -74,7 +74,7 @@ export default function ResolutionDashboardDetailScreen({ route }: Props) {
   }
 
   const totalWeeks = resolution.duration_weeks ?? 12;
-  const currentWeek = Math.min(totalWeeks, Math.max(1, Math.round(resolution.completion_rate * totalWeeks) || 1));
+  const currentWeek = resolution.current_week ?? 1;
   const weekStartLabel = formatScheduleLabel(resolution.week.start, null) ?? resolution.week.start;
   const weekEndLabel = formatScheduleLabel(resolution.week.end, null) ?? resolution.week.end;
   const weekRange = `${weekStartLabel} - ${weekEndLabel}`;

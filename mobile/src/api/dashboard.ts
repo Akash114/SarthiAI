@@ -27,6 +27,7 @@ export type DashboardResolution = {
   };
   tasks: DashboardTaskStats;
   completion_rate: number;
+  current_week: number;
   recent_activity: DashboardActivity[];
 };
 

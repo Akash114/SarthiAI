@@ -1,76 +1,46 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useState } from "react";
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useNavigation } from "@react-navigation/native";
 import type { RootStackParamList } from "../../types/navigation";
-import { getTask, updateTask } from "../api/tasks";
+import { createTask } from "../api/tasks";
 import { useUserId } from "../state/user";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 
-type Props = NativeStackScreenProps<RootStackParamList, "TaskEdit">;
+type Props = NativeStackScreenProps<RootStackParamList, "TaskCreate">;
 
-export default function TaskEditScreen() {
+export default function TaskCreateScreen() {
   const navigation = useNavigation<Props["navigation"]>();
-  const route = useRoute<Props["route"]>();
-  const { taskId } = route.params;
   const { userId } = useUserId();
 
   const [title, setTitle] = useState("");
-  const [completed, setCompleted] = useState(false);
   const [scheduledDay, setScheduledDay] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
+  const [duration, setDuration] = useState("");
   const [note, setNote] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerState, setPickerState] = useState<{ mode: "date" | "time"; value: Date } | null>(null);
 
-  useEffect(() => {
-    const loadTask = async () => {
-      if (!userId) return;
-      setLoading(true);
-      setError(null);
-      try {
-        const task = await getTask(taskId, userId);
-        setTitle(task.title);
-        setCompleted(task.completed);
-        setScheduledDay(task.scheduled_day || "");
-        setScheduledTime(task.scheduled_time || "");
-        setNote(task.note || "");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unable to load task.");
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadTask();
-  }, [taskId, userId]);
-
-  const handleSave = async () => {
-    if (!userId) return;
+  const handleCreate = async () => {
+    if (!userId || !title.trim()) {
+      setError("Please enter a title.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      await updateTask(taskId, userId, {
-        title,
-        completed,
-        scheduled_day: scheduledDay || null,
-        scheduled_time: scheduledTime || null,
+      await createTask({
+        user_id: userId,
+        title: title.trim(),
+        scheduled_day: scheduledDay ? scheduledDay : undefined,
+        scheduled_time: scheduledTime ? scheduledTime : undefined,
+        duration_min: duration ? Number(duration) : undefined,
         note,
       });
       navigation.goBack();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update task.");
+      setError(err instanceof Error ? err.message : "Unable to create task.");
     } finally {
       setSaving(false);
     }
@@ -84,6 +54,8 @@ export default function TaskEditScreen() {
     setPickerState({ mode, value });
   };
 
+  const closePicker = () => setPickerState(null);
+
   const handlePickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
     if (!selectedDate) return;
     setPickerState((prev) => (prev ? { ...prev, value: selectedDate } : prev));
@@ -96,61 +68,57 @@ export default function TaskEditScreen() {
     } else {
       setScheduledTime(formatTime(pickerState.value));
     }
-    setPickerState(null);
+    closePicker();
   };
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.helper}>Loading task…</Text>
-      </View>
-    );
-  }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Edit Task</Text>
+      <Text style={styles.title}>New Task</Text>
+      <Text style={styles.subtitle}>Create a quick standalone task for this week.</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <Text style={styles.label}>Title</Text>
       <TextInput
+        style={styles.input}
         value={title}
         onChangeText={setTitle}
-        style={styles.input}
-        placeholder="Task title"
+        placeholder="e.g., Review project brief"
       />
 
-      <View style={styles.row}>
-        <Text style={styles.label}>Completed</Text>
-        <Switch value={completed} onValueChange={setCompleted} />
-      </View>
-
-      <Text style={styles.label}>Scheduled Day</Text>
+      <Text style={styles.label}>Scheduled Day (optional)</Text>
       <TouchableOpacity style={styles.input} onPress={() => openPicker("date")}>
-        <Text style={scheduledDay ? styles.valueText : styles.placeholderText}>
-          {scheduledDay || "Pick a date"}
+        <Text style={scheduledDay ? styles.pickerValue : styles.placeholder}>
+          {scheduledDay ? scheduledDay : "Pick a date"}
         </Text>
       </TouchableOpacity>
 
-      <Text style={styles.label}>Scheduled Time</Text>
+      <Text style={styles.label}>Scheduled Time (optional)</Text>
       <TouchableOpacity style={styles.input} onPress={() => openPicker("time")}>
-        <Text style={scheduledTime ? styles.valueText : styles.placeholderText}>
-          {scheduledTime || "Pick a time"}
+        <Text style={scheduledTime ? styles.pickerValue : styles.placeholder}>
+          {scheduledTime ? scheduledTime : "Pick a time"}
         </Text>
       </TouchableOpacity>
+
+      <Text style={styles.label}>Duration (minutes)</Text>
+      <TextInput
+        style={styles.input}
+        value={duration}
+        onChangeText={setDuration}
+        placeholder="30"
+        keyboardType="numeric"
+      />
 
       <Text style={styles.label}>Notes</Text>
       <TextInput
+        style={[styles.input, styles.noteInput]}
         value={note}
         onChangeText={setNote}
-        style={[styles.input, styles.noteInput]}
-        placeholder="Add a note..."
+        placeholder="Add context or prep details…"
         multiline
       />
 
-      <TouchableOpacity style={[styles.button, saving && styles.buttonDisabled]} onPress={handleSave} disabled={saving}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save Changes</Text>}
+      <TouchableOpacity style={[styles.button, saving && styles.buttonDisabled]} onPress={handleCreate} disabled={saving}>
+        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Create Task</Text>}
       </TouchableOpacity>
       {pickerState ? (
         <Modal transparent animationType="fade" visible={true}>
@@ -163,7 +131,7 @@ export default function TaskEditScreen() {
                 onChange={handlePickerChange}
               />
               <View style={styles.pickerActions}>
-                <TouchableOpacity style={styles.pickerButton} onPress={() => setPickerState(null)}>
+                <TouchableOpacity style={styles.pickerButton} onPress={closePicker}>
                   <Text style={styles.pickerButtonText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.pickerButton, styles.pickerConfirm]} onPress={confirmPicker}>
@@ -183,14 +151,13 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 12,
   },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   title: {
     fontSize: 24,
     fontWeight: "600",
+  },
+  subtitle: {
+    color: "#4b5563",
+    marginBottom: 8,
   },
   label: {
     fontWeight: "600",
@@ -202,20 +169,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
-  placeholderText: {
+  placeholder: {
     color: "#9CA3AF",
   },
-  valueText: {
+  pickerValue: {
     color: "#111827",
   },
   noteInput: {
     minHeight: 120,
     textAlignVertical: "top",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
   },
   button: {
     marginTop: 16,
@@ -230,10 +192,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontWeight: "600",
-  },
-  helper: {
-    marginTop: 8,
-    color: "#666",
   },
   error: {
     color: "#c62828",

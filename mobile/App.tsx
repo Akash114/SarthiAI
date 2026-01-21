@@ -22,6 +22,7 @@ import WeeklyPlanHistoryDetailScreen from "./src/screens/WeeklyPlanHistoryDetail
 import InterventionsHistoryScreen from "./src/screens/InterventionsHistoryScreen";
 import InterventionsHistoryDetailScreen from "./src/screens/InterventionsHistoryDetailScreen";
 import TaskEditScreen from "./src/screens/TaskEditScreen";
+import TaskCreateScreen from "./src/screens/TaskCreateScreen";
 import type { RootStackParamList } from "./types/navigation";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -80,6 +81,7 @@ function App() {
           component={PlanReviewScreen}
           options={{ title: "Plan Review" }}
         />
+        <Stack.Screen name="TaskCreate" component={TaskCreateScreen} options={{ title: "New Task" }} />
         <Stack.Screen name="TaskEdit" component={TaskEditScreen} options={{ title: "Edit Task" }} />
       </Stack.Navigator>
     </NavigationContainer>

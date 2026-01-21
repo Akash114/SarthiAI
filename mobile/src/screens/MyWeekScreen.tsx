@@ -44,31 +44,70 @@ export default function MyWeekScreen() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
 
+  const dayFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+      }),
+    [],
+  );
+
   const grouped = useMemo<TaskSection[]>(() => {
-    const scheduled = sortTasksBySchedule(tasks.filter((task) => !!task.scheduled_day));
-    const unscheduled = tasks.filter((task) => !task.scheduled_day);
-    const sections: TaskSection[] = [];
-    if (scheduled.length) {
-      sections.push({ title: "Scheduled", data: scheduled });
-    }
+    const buckets = new Map<string, { title: string; data: TaskItem[]; dateValue: number }>();
+    const unscheduled: TaskItem[] = [];
+
+    tasks.forEach((task) => {
+      if (task.scheduled_day) {
+        const dateObj = new Date(task.scheduled_day);
+        if (!Number.isNaN(dateObj.getTime())) {
+          const key = dateObj.toISOString().slice(0, 10);
+          if (!buckets.has(key)) {
+            buckets.set(key, { title: dayFormatter.format(dateObj), data: [], dateValue: dateObj.getTime() });
+          }
+          buckets.get(key)!.data.push(task);
+          return;
+        }
+      }
+      unscheduled.push(task);
+    });
+
+    const sections: TaskSection[] = Array.from(buckets.values())
+      .sort((a, b) => a.dateValue - b.dateValue)
+      .map((section) => ({
+        title: section.title,
+        data: sortTasksBySchedule(section.data),
+      }));
+
     if (unscheduled.length) {
       sections.push({ title: "Unscheduled", data: unscheduled });
     }
     return sections;
-  }, [tasks]);
+  }, [tasks, dayFormatter]);
 
   const renderItem = ({ item }: { item: TaskItem }) => (
     <View style={[styles.card, item.completed && styles.cardCompleted]}>
-      <TouchableOpacity style={styles.row} onPress={() => handleToggle(item)} disabled={!!updatingId}>
-        <View style={[styles.checkbox, item.completed && styles.checkboxChecked]}>
+      <View style={styles.row}>
+        <TouchableOpacity
+          style={[styles.checkbox, item.completed && styles.checkboxChecked]}
+          onPress={() => handleToggle(item)}
+          disabled={!!updatingId}
+        >
           {item.completed ? <Text style={styles.checkboxMark}>✓</Text> : null}
-        </View>
+        </TouchableOpacity>
         <View style={styles.taskContent}>
           <Text style={[styles.title, item.completed && styles.completedText]}>{item.title}</Text>
           <Text style={styles.meta}>{formatScheduleLabel(item.scheduled_day, item.scheduled_time)}</Text>
           {item.duration_min ? <Text style={styles.meta}>{item.duration_min} min</Text> : null}
         </View>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.editChip}
+          onPress={() => navigation.navigate("TaskEdit", { taskId: item.id })}
+        >
+          <Text style={styles.editChipText}>Edit</Text>
+        </TouchableOpacity>
+      </View>
       {item.note ? <Text style={styles.noteText}>{item.note}</Text> : null}
       <TouchableOpacity style={styles.noteButton} onPress={() => openNoteModal(item)} disabled={noteSaving}>
         <Text style={styles.noteButtonText}>{item.note ? "Edit note" : "Add note"}</Text>
@@ -325,6 +364,18 @@ const styles = StyleSheet.create({
   noteButtonText: {
     color: "#1a73e8",
     fontWeight: "600",
+  },
+  editChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#E0E7FF",
+    marginLeft: 12,
+  },
+  editChipText: {
+    color: "#1E3A8A",
+    fontWeight: "600",
+    fontSize: 12,
   },
   center: {
     flex: 1,

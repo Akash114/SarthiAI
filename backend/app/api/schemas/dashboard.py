@@ -38,6 +38,7 @@ class DashboardResolution(BaseModel):
     tasks: TaskStats
     completion_rate: float
     recent_activity: List[RecentActivity]
+    current_week: int
 
 
 class DashboardResponse(BaseModel):
