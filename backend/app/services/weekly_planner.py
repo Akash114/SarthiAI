@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import date, timedelta, time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 from uuid import UUID
 
 import openai
@@ -306,20 +306,30 @@ def _materialize_tasks_from_plan(
     """Create concrete Task rows from the suggested payload."""
     created: List[Task] = []
     suggestions = micro_resolution.suggested_week_1_tasks or []
+    week_end = week_start + timedelta(days=6)
+    occupied = _load_existing_schedule_map(db, user_id, week_start, week_end)
     for index, suggestion in enumerate(suggestions):
-        scheduled_day = week_start + timedelta(days=index % 7)
-        scheduled_time = _map_suggested_time(suggestion.suggested_time)
+        requested_day = week_start + timedelta(days=index % 7)
+        requested_time = _map_suggested_time(suggestion.suggested_time)
+        scheduled_day, scheduled_time = _reserve_available_slot(
+            requested_day,
+            requested_time,
+            occupied,
+            week_start,
+            week_end,
+        )
         metadata = {
             "draft": False,
             "source": "rolling_wave",
             "micro_resolution_title": micro_resolution.title,
             "suggested_time": suggestion.suggested_time,
         }
+        duration_minutes = suggestion.duration_min or 30
         task = Task(
             user_id=user_id,
             resolution_id=None,
             title=suggestion.title,
-            duration_min=suggestion.duration_min,
+            duration_min=duration_minutes,
             scheduled_day=scheduled_day,
             scheduled_time=scheduled_time,
             metadata_json=metadata,
@@ -345,6 +355,68 @@ def _map_suggested_time(label: str | None) -> time | None:
     if label == "evening":
         return time(hour=19, minute=0)
     return None
+
+
+def _load_existing_schedule_map(db: Session, user_id: UUID, week_start: date, week_end: date) -> Dict[date, Set[time]]:
+    rows = (
+        db.query(Task)
+        .filter(
+            Task.user_id == user_id,
+            Task.scheduled_day.isnot(None),
+            Task.scheduled_day >= week_start,
+            Task.scheduled_day <= week_end,
+        )
+        .all()
+    )
+    occupied: Dict[date, Set[time]] = {}
+    for row in rows:
+        metadata = row.metadata_json or {}
+        if metadata.get("draft"):
+            continue
+        if row.scheduled_day and row.scheduled_time:
+            occupied.setdefault(row.scheduled_day, set()).add(row.scheduled_time)
+    return occupied
+
+
+def _reserve_available_slot(
+    requested_day: date,
+    requested_time: time | None,
+    occupied: Dict[date, Set[time]],
+    week_start: date,
+    week_end: date,
+) -> Tuple[date, time | None]:
+    if requested_time is None:
+        return requested_day, None
+
+    total_days = (week_end - week_start).days + 1
+    time_choices = _time_preferences(requested_time)
+
+    for day_offset in range(total_days):
+        candidate_day = requested_day + timedelta(days=day_offset)
+        if candidate_day > week_end:
+            candidate_day = week_start + timedelta(days=(candidate_day - week_start).days % total_days)
+        used = occupied.setdefault(candidate_day, set())
+        for slot in time_choices:
+            if slot not in used:
+                used.add(slot)
+                return candidate_day, slot
+
+    # Fallback: every slot is occupied, return the original to avoid dropping the task.
+    return requested_day, requested_time
+
+
+def _time_preferences(preferred: time) -> List[time]:
+    """Return a deterministic ordering of preferred times to try."""
+    anchors = [
+        time(hour=9, minute=0),
+        time(hour=13, minute=0),
+        time(hour=19, minute=0),
+    ]
+    ordered = [preferred]
+    for anchor in anchors:
+        if anchor not in ordered:
+            ordered.append(anchor)
+    return ordered
 
 
 def _upcoming_week_window(base: date | None = None) -> Tuple[date, date]:

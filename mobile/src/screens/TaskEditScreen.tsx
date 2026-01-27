@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   ScrollView,
   StyleSheet,
@@ -16,6 +17,8 @@ import type { RootStackParamList } from "../../types/navigation";
 import { getTask, updateTask } from "../api/tasks";
 import { useUserId } from "../state/user";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import { TimeSlotModal } from "../components/TimeSlotModal";
+import { useTaskSchedule } from "../hooks/useTaskSchedule";
 
 type Props = NativeStackScreenProps<RootStackParamList, "TaskEdit">;
 
@@ -33,7 +36,11 @@ export default function TaskEditScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pickerState, setPickerState] = useState<{ mode: "date" | "time"; value: Date } | null>(null);
+  const [pickerState, setPickerState] = useState<{ value: Date } | null>(null);
+  const [timeModalVisible, setTimeModalVisible] = useState(false);
+  const [timeOptions, setTimeOptions] = useState<string[]>([]);
+
+  const { getAvailableTimes } = useTaskSchedule(userId);
 
   useEffect(() => {
     const loadTask = async () => {
@@ -76,12 +83,9 @@ export default function TaskEditScreen() {
     }
   };
 
-  const openPicker = (mode: "date" | "time") => {
-    const value =
-      mode === "date"
-        ? parseDate(scheduledDay) ?? new Date()
-        : parseTime(scheduledTime) ?? new Date();
-    setPickerState({ mode, value });
+  const openPicker = () => {
+    const value = parseDate(scheduledDay) ?? new Date();
+    setPickerState({ value });
   };
 
   const handlePickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
@@ -91,12 +95,22 @@ export default function TaskEditScreen() {
 
   const confirmPicker = () => {
     if (!pickerState) return;
-    if (pickerState.mode === "date") {
-      setScheduledDay(formatDate(pickerState.value));
-    } else {
-      setScheduledTime(formatTime(pickerState.value));
-    }
+    setScheduledDay(formatDate(pickerState.value));
     setPickerState(null);
+  };
+
+  const openTimeSelector = () => {
+    if (!scheduledDay) {
+      Alert.alert("Pick a date", "Please select a day before choosing a time.");
+      return;
+    }
+    const options = getAvailableTimes(scheduledDay, { currentTime: scheduledTime || null });
+    if (!options.length) {
+      Alert.alert("No slots", "All standard slots are full for this day. Choose another date.");
+      return;
+    }
+    setTimeOptions(options);
+    setTimeModalVisible(true);
   };
 
   if (loading) {
@@ -127,14 +141,14 @@ export default function TaskEditScreen() {
       </View>
 
       <Text style={styles.label}>Scheduled Day</Text>
-      <TouchableOpacity style={styles.input} onPress={() => openPicker("date")}>
+      <TouchableOpacity style={styles.input} onPress={openPicker}>
         <Text style={scheduledDay ? styles.valueText : styles.placeholderText}>
           {scheduledDay || "Pick a date"}
         </Text>
       </TouchableOpacity>
 
       <Text style={styles.label}>Scheduled Time</Text>
-      <TouchableOpacity style={styles.input} onPress={() => openPicker("time")}>
+      <TouchableOpacity style={styles.input} onPress={openTimeSelector}>
         <Text style={scheduledTime ? styles.valueText : styles.placeholderText}>
           {scheduledTime || "Pick a time"}
         </Text>
@@ -156,12 +170,7 @@ export default function TaskEditScreen() {
         <Modal transparent animationType="fade" visible={true}>
           <View style={styles.pickerOverlay}>
             <View style={styles.pickerCard}>
-              <DateTimePicker
-                value={pickerState.value}
-                mode={pickerState.mode}
-                display="spinner"
-                onChange={handlePickerChange}
-              />
+              <DateTimePicker value={pickerState.value} mode="date" display="spinner" onChange={handlePickerChange} />
               <View style={styles.pickerActions}>
                 <TouchableOpacity style={styles.pickerButton} onPress={() => setPickerState(null)}>
                   <Text style={styles.pickerButtonText}>Cancel</Text>
@@ -174,6 +183,16 @@ export default function TaskEditScreen() {
           </View>
         </Modal>
       ) : null}
+      <TimeSlotModal
+        visible={timeModalVisible}
+        day={scheduledDay}
+        options={timeOptions}
+        onClose={() => setTimeModalVisible(false)}
+        onSelect={(slot) => {
+          setScheduledTime(slot);
+          setTimeModalVisible(false);
+        }}
+      />
     </ScrollView>
   );
 }
@@ -281,21 +300,8 @@ function parseDate(value: string): Date | null {
   return new Date(year, month - 1, day);
 }
 
-function parseTime(value: string): Date | null {
-  if (!value) return null;
-  const [hours, minutes] = value.split(":").map(Number);
-  if (hours == null || minutes == null) return null;
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
-  return date;
-}
-
 const pad = (num: number) => num.toString().padStart(2, "0");
 
 function formatDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function formatTime(date: Date): string {
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }

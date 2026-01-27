@@ -13,6 +13,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import type { RootStackParamList } from "../../types/navigation";
 import { TaskItem, updateTaskCompletion, updateTaskNote } from "../api/tasks";
+import { TaskCard } from "../components/TaskCard";
 import { useUserId } from "../state/user";
 import { useTasks } from "../hooks/useTasks";
 import { formatScheduleLabel, sortTasksBySchedule } from "../utils/datetime";
@@ -87,32 +88,34 @@ export default function MyWeekScreen() {
   }, [tasks, dayFormatter]);
 
   const renderItem = ({ item }: { item: TaskItem }) => (
-    <View style={[styles.card, item.completed && styles.cardCompleted]}>
-      <View style={styles.row}>
-        <TouchableOpacity
-          style={[styles.checkbox, item.completed && styles.checkboxChecked]}
-          onPress={() => handleToggle(item)}
-          disabled={!!updatingId}
-        >
-          {item.completed ? <Text style={styles.checkboxMark}>✓</Text> : null}
-        </TouchableOpacity>
-        <View style={styles.taskContent}>
-          <Text style={[styles.title, item.completed && styles.completedText]}>{item.title}</Text>
-          <Text style={styles.meta}>{formatScheduleLabel(item.scheduled_day, item.scheduled_time)}</Text>
-          {item.duration_min ? <Text style={styles.meta}>{item.duration_min} min</Text> : null}
+    <TaskCard
+      task={{
+        id: item.id,
+        title: item.title,
+        completed: item.completed,
+        scheduled_day: item.scheduled_day,
+        scheduled_time: item.scheduled_time,
+        duration_min: item.duration_min,
+      }}
+      onToggle={updatingId ? undefined : () => handleToggle(item)}
+      badgeLabel={null}
+      footer={
+        <View>
+          {item.note ? <Text style={styles.noteText}>{item.note}</Text> : null}
+          <View style={styles.footerRow}>
+            <TouchableOpacity
+              style={styles.editChip}
+              onPress={() => navigation.navigate("TaskEdit", { taskId: item.id })}
+            >
+              <Text style={styles.editChipText}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.noteButton} onPress={() => openNoteModal(item)} disabled={noteSaving}>
+              <Text style={styles.noteButtonText}>{item.note ? "Edit note" : "Add note"}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        <TouchableOpacity
-          style={styles.editChip}
-          onPress={() => navigation.navigate("TaskEdit", { taskId: item.id })}
-        >
-          <Text style={styles.editChipText}>Edit</Text>
-        </TouchableOpacity>
-      </View>
-      {item.note ? <Text style={styles.noteText}>{item.note}</Text> : null}
-      <TouchableOpacity style={styles.noteButton} onPress={() => openNoteModal(item)} disabled={noteSaving}>
-        <Text style={styles.noteButtonText}>{item.note ? "Edit note" : "Add note"}</Text>
-      </TouchableOpacity>
-    </View>
+      }
+    />
   );
 
   const handleToggle = async (task: TaskItem) => {
@@ -307,59 +310,13 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     color: "#111",
   },
-  card: {
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e0e4ef",
-    backgroundColor: "#fff",
-    marginBottom: 10,
-  },
-  cardCompleted: {
-    opacity: 0.6,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  completedText: {
-    textDecorationLine: "line-through",
-  },
-  meta: {
-    color: "#555",
-    marginTop: 4,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "#d0d4e2",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  checkboxChecked: {
-    backgroundColor: "#1a73e8",
-    borderColor: "#1a73e8",
-  },
-  checkboxMark: {
-    color: "#fff",
-    fontWeight: "700",
-  },
-  taskContent: {
-    flex: 1,
-  },
   noteText: {
     marginTop: 8,
     color: "#333",
   },
   noteButton: {
-    marginTop: 8,
+    marginLeft: 12,
+    paddingVertical: 6,
   },
   noteButtonText: {
     color: "#1a73e8",
@@ -370,12 +327,16 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: "#E0E7FF",
-    marginLeft: 12,
   },
   editChipText: {
     color: "#1E3A8A",
     fontWeight: "600",
     fontSize: 12,
+  },
+  footerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
   },
   center: {
     flex: 1,

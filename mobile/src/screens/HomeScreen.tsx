@@ -3,11 +3,12 @@ import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, Toucha
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Settings, Plus, Brain, Target, Check, Calendar, Shield, CheckSquare } from "lucide-react-native";
+import { Settings, Plus, Brain, Target, Calendar, Shield, CheckSquare } from "lucide-react-native";
 import * as dashboardApi from "../api/dashboard";
 import type { DashboardResponse } from "../api/dashboard";
 import * as tasksApi from "../api/tasks";
 import type { TaskItem } from "../api/tasks";
+import { TaskCard } from "../components/TaskCard";
 import { useUserId } from "../state/user";
 import type { RootStackParamList } from "../../types/navigation";
 
@@ -35,7 +36,9 @@ interface Task {
   id: string;
   title: string;
   is_completed: boolean;
+  scheduled_day: string | null;
   scheduled_time?: string;
+  duration_min: number | null;
   source_resolution_title?: string;
 }
 
@@ -83,7 +86,9 @@ export default function HomeScreen() {
         id: task.id,
         title: task.title,
         is_completed: task.completed,
+        scheduled_day: task.scheduled_day,
         scheduled_time: task.scheduled_time ?? undefined,
+        duration_min: task.duration_min,
         source_resolution_title: task.resolution_id ? resolutionLookup[task.resolution_id] : undefined,
       }));
       setTodayFlow(sortFlowTasks(mappedTasks));
@@ -289,38 +294,22 @@ export default function HomeScreen() {
 
                 {visibleTasks.length ? (
                   visibleTasks.map((task) => (
-                    <View key={task.id} style={[styles.taskCard, task.is_completed && styles.taskCardCompleted]}>
-                      <TouchableOpacity
-                        style={styles.taskBody}
-                        onPress={() => navigation.navigate("TaskEdit", { taskId: task.id })}
-                        activeOpacity={0.8}
-                      >
-                        <View style={styles.taskTimeBox}>
-                          {task.scheduled_time ? (
-                            <Text style={styles.taskTime}>{formatTime(task.scheduled_time)}</Text>
-                          ) : (
-                            <Calendar color="#94A3B8" size={18} style={styles.unscheduledIcon} />
-                          )}
-                        </View>
-                        <View style={styles.taskTextContainer}>
-                          <Text style={[styles.taskTitle, task.is_completed && styles.taskTitleCompleted]}>
-                            {task.title}
-                          </Text>
-                          {task.source_resolution_title ? (
-                            <View style={styles.badge}>
-                              <Text style={styles.badgeText}>{task.source_resolution_title}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.checkbox, task.is_completed && styles.checkboxChecked]}
-                        onPress={() => handleToggleTask(task.id, !task.is_completed)}
-                        disabled={updatingTaskId === task.id}
-                      >
-                        {task.is_completed ? <Check size={16} color="#fff" strokeWidth={3} /> : null}
-                      </TouchableOpacity>
-                    </View>
+                    <TaskCard
+                      key={task.id}
+                      task={{
+                        id: task.id,
+                        title: task.title,
+                        completed: task.is_completed,
+                        scheduled_day: task.scheduled_day,
+                        scheduled_time: task.scheduled_time ?? null,
+                        duration_min: task.duration_min,
+                      }}
+                      onPress={() => navigation.navigate("TaskEdit", { taskId: task.id })}
+                      onToggle={
+                        updatingTaskId ? undefined : (id, completed) => handleToggleTask(id, completed)
+                      }
+                      badgeLabel={task.source_resolution_title}
+                    />
                   ))
                 ) : (
                   <>
@@ -670,65 +659,6 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 999,
     backgroundColor: "#6B8DBF",
-  },
-  taskCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
-  },
-  taskCardCompleted: {
-    opacity: 0.6,
-    backgroundColor: "#F7FAFC",
-  },
-  taskBody: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  taskTimeBox: {
-    width: 72,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  unscheduledIcon: {
-    marginTop: 2,
-  },
-  taskTime: {
-    fontWeight: "600",
-    color: "#2D3748",
-  },
-  taskTextContainer: {
-    flex: 1,
-  },
-  taskTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2933",
-  },
-  taskTitleCompleted: {
-    textDecorationLine: "line-through",
-    color: "#94A3B8",
-  },
-  badge: {
-    alignSelf: "flex-start",
-    marginTop: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: "#EEF2FF",
-  },
-  badgeText: {
-    color: "#6B8DBF",
-    fontSize: 12,
-    fontWeight: "600",
   },
   checkbox: {
     width: 32,

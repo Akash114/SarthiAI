@@ -275,6 +275,17 @@ SPECIALTY_CONFIG: Dict[str, Dict[str, Any]] = {
     },
 }
 
+LEARNING_RESOLUTION_TYPES = {"learning", "skill"}
+
+LEARNING_DETAILS_PROMPT = (
+    "### LEARNING TASK RULES\n"
+    "- Cite specific resources (book/article titles, documentary episodes, lecture names) for every study task.\n"
+    "- Mention the chapter, section, or timestamp so the user knows exactly where to start (e.g., 'Read Chapter 2: Dawn of Civilization from 'India: A History', pp. 35-62').\n"
+    "- Avoid vague directions like 'read about topic'; always name the source and portion to cover.\n"
+    "- Each Week 1 task must reference a unique resource or a clearly different section; do not repeat the exact same task title or source in Week 1.\n"
+    "- If repetition is needed later, change the chapter/page range or the medium (book vs. podcast vs. documentary).\n"
+)
+
 TYPE_DEFAULT_TEMPLATE = {
     "skill": "skill_generic",
     "learning": "skill_generic",
@@ -557,6 +568,7 @@ def _build_prompts(
     )
     specialty_hint = _specialty_prompt_hint(user_input, resolution_type, refined_goal)
     specialty_block = f"{specialty_hint}\n\n" if specialty_hint else ""
+    learning_block = LEARNING_DETAILS_PROMPT + "\n\n" if resolution_type in LEARNING_RESOLUTION_TYPES else ""
     requirements_block = _render_goal_requirements(refined_goal)
     # USER PROMPT: The "Planner" Logic
     user_prompt = (
@@ -590,6 +602,7 @@ def _build_prompts(
         f"{hard_constraints}\n\n"
         f"{requirements_block}"
         f"{specialty_block}"
+        f"{learning_block}"
         "### OUTPUT REQUIREMENT\n"
         "Return strictly valid JSON matching this schema:\n"
         f"{schema_json}"

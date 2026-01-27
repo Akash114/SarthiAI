@@ -17,7 +17,10 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { approveResolution, TaskEditPayload, ApprovalResponse, WeekPlanTask } from "../api/resolutions";
 import { useUserId } from "../state/user";
 import { EditableTask, useResolutionPlan } from "../hooks/useResolutionPlan";
-import { formatDisplayDate, formatDisplayTime, formatScheduleLabel, sortTasksBySchedule } from "../utils/datetime";
+import { formatDisplayDate, formatScheduleLabel, sortTasksBySchedule } from "../utils/datetime";
+import { requestCalendarPermissions, syncTaskToCalendar } from "../hooks/useCalendarSync";
+import { TimeSlotModal } from "../components/TimeSlotModal";
+import { useTaskSchedule } from "../hooks/useTaskSchedule";
 import type { RootStackParamList } from "../../types/navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PlanReview">;
@@ -35,16 +38,15 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
     setTasks,
     regenerate,
   } = useResolutionPlan({ resolutionId, userId, initialResolution });
+  const { getAvailableTimes } = useTaskSchedule(userId);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [success, setSuccess] = useState<ApprovalResponse | null>(null);
-  const [pickerState, setPickerState] = useState<{
-    taskId: string;
-    mode: "date" | "time";
-    value: Date;
-  } | null>(null);
+  const [pickerState, setPickerState] = useState<{ taskId: string; value: Date } | null>(null);
+  const [timePickerState, setTimePickerState] = useState<{ taskId: string; day: string; options: string[] } | null>(null);
   const [newTaskIdCounter, setNewTaskIdCounter] = useState(0);
   const [selectedWeek, setSelectedWeek] = useState(1);
+  const [syncingAll, setSyncingAll] = useState(false);
 
   const weekSections = useMemo(() => {
     if (weeks && weeks.length) {
@@ -143,26 +145,40 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
     ]);
   };
 
-  const openPicker = (task: EditableTask, mode: "date" | "time") => {
-    const value =
-      mode === "date" ? parseDate(task.scheduled_day) ?? new Date() : parseTime(task.scheduled_time) ?? new Date();
+  const openDatePicker = (task: EditableTask) => {
+    const value = parseDate(task.scheduled_day) ?? new Date();
     setPickerState({
       taskId: task.id,
-      mode,
       value,
     });
+  };
+
+  const openTimeSlotPicker = (task: EditableTask) => {
+    if (!task.scheduled_day) {
+      Alert.alert("Pick a date", "Set a day before picking a time.");
+      return;
+    }
+    const blocked = tasks
+      .filter((entry) => entry.id !== task.id && entry.scheduled_day === task.scheduled_day && entry.scheduled_time)
+      .map((entry) => entry.scheduled_time as string)
+      .filter(Boolean);
+    const options = getAvailableTimes(task.scheduled_day, {
+      currentTime: task.scheduled_time || null,
+      blocked,
+    });
+    if (!options.length) {
+      Alert.alert("No slots", "All standard slots are full for this day. Pick another date.");
+      return;
+    }
+    setTimePickerState({ taskId: task.id, day: task.scheduled_day, options });
   };
 
   const closePicker = () => setPickerState(null);
 
   const confirmPicker = () => {
     if (!pickerState) return;
-    const formatted = pickerState.mode === "date" ? formatDate(pickerState.value) : formatTime(pickerState.value);
-    if (pickerState.mode === "date") {
-      updateTaskField(pickerState.taskId, "scheduled_day", formatted);
-    } else {
-      updateTaskField(pickerState.taskId, "scheduled_time", formatted);
-    }
+    const formatted = formatDate(pickerState.value);
+    updateTaskField(pickerState.taskId, "scheduled_day", formatted);
     closePicker();
   };
 
@@ -184,6 +200,14 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
       });
 
       setSuccess(result);
+      Alert.alert(
+        "Plan activated",
+        "Do you want to add these tasks to your calendar now?",
+        [
+          { text: "Not now", style: "cancel" },
+          { text: "Sync Tasks", onPress: () => handleSyncAll(result.tasks_activated ?? []) },
+        ],
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to approve this plan right now.");
     } finally {
@@ -199,6 +223,41 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
       navigation.navigate("Home");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to update the plan right now.");
+    }
+  };
+
+  const handleSyncAll = async (approvedTasks: ApprovalResponse["tasks_activated"]) => {
+    if (!approvedTasks?.length) {
+      Alert.alert("Calendar", "No dated tasks ready to sync yet.");
+      return;
+    }
+    try {
+      const granted = await requestCalendarPermissions();
+      if (!granted) {
+        Alert.alert("Permission needed", "Calendar or reminders access was not granted.");
+        return;
+      }
+      setSyncingAll(true);
+      for (const task of approvedTasks) {
+        if (!task.scheduled_day) continue;
+        try {
+          await syncTaskToCalendar({
+            title: task.title,
+            scheduled_day: task.scheduled_day,
+            scheduled_time: task.scheduled_time,
+            duration_min: task.duration_min,
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Unable to sync one of the tasks.";
+          Alert.alert("Calendar warning", `${task.title}: ${message}`);
+        }
+      }
+      Alert.alert("Calendar", "All dated tasks have been added to your calendar.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to sync tasks right now.";
+      Alert.alert("Calendar error", message);
+    } finally {
+      setSyncingAll(false);
     }
   };
 
@@ -371,14 +430,14 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
                       <View style={styles.taskControls}>
                         <TouchableOpacity
                           style={styles.pillButton}
-                          onPress={() => openPicker(task, "date")}
+                          onPress={() => openDatePicker(task)}
                           disabled={pending || !!success}
                         >
                           <Text style={styles.pillText}>{task.scheduled_day || "Pick date"}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.pillButton}
-                          onPress={() => openPicker(task, "time")}
+                          onPress={() => openTimeSlotPicker(task)}
                           disabled={pending || !!success}
                         >
                           <Text style={styles.pillText}>{task.scheduled_time || "Pick time"}</Text>
@@ -455,10 +514,10 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
         <Modal transparent animationType="fade">
           <View style={styles.pickerBackdrop}>
             <View style={styles.pickerCard}>
-              <Text style={styles.sectionTitleSerif}>{pickerState.mode === "date" ? "Pick a date" : "Pick a time"}</Text>
+              <Text style={styles.sectionTitleSerif}>Pick a date</Text>
               <DateTimePicker
                 value={pickerState.value}
-                mode={pickerState.mode}
+                mode="date"
                 display="spinner"
                 onChange={(_, date) => {
                   if (date) {
@@ -478,6 +537,18 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
           </View>
         </Modal>
       ) : null}
+      <TimeSlotModal
+        visible={!!timePickerState}
+        day={timePickerState?.day ?? ""}
+        options={timePickerState?.options ?? []}
+        onClose={() => setTimePickerState(null)}
+        onSelect={(slot) => {
+          if (timePickerState) {
+            updateTaskField(timePickerState.taskId, "scheduled_time", slot);
+          }
+          setTimePickerState(null);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -826,15 +897,6 @@ function parseDate(value: string): Date | null {
   return new Date(year, month - 1, day);
 }
 
-function parseTime(value: string): Date | null {
-  if (!value) return null;
-  const [hours, minutes] = value.split(":").map(Number);
-  if (hours == null || minutes == null) return null;
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
-  return date;
-}
-
 const pad = (num: number) => num.toString().padStart(2, "0");
 
 function formatDate(date: Date): string {
@@ -842,8 +904,4 @@ function formatDate(date: Date): string {
   const month = pad(date.getMonth() + 1);
   const day = pad(date.getDate());
   return `${year}-${month}-${day}`;
-}
-
-function formatTime(date: Date): string {
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }

@@ -44,12 +44,10 @@ export function formatDisplayTime(value?: string | null): string | null {
   if (hours == null || minutes == null || Number.isNaN(hours) || Number.isNaN(minutes)) {
     return normalized;
   }
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
-  return date.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHour = hours % 12 === 0 ? 12 : hours % 12;
+  const paddedMinutes = minutes.toString().padStart(2, "0");
+  return `${displayHour}:${paddedMinutes} ${period}`;
 }
 
 export function getSortTimestamp(day?: string | null, time?: string | null): number {
