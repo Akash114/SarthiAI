@@ -70,8 +70,12 @@ export default function SettingsPermissionsScreen() {
   }
 
   const handleNotificationEnable = async () => {
+    if (!userId) {
+      Alert.alert("Notifications", "User not ready yet. Try again shortly.");
+      return;
+    }
     try {
-      const granted = await registerForPushNotificationsAsync();
+      const granted = await registerForPushNotificationsAsync(userId);
       setNotificationStatus(granted ? "granted" : "denied");
       Alert.alert(
         granted ? "Notifications enabled" : "Permission denied",

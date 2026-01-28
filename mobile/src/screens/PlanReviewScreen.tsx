@@ -19,7 +19,6 @@ import { useUserId } from "../state/user";
 import { EditableTask, useResolutionPlan } from "../hooks/useResolutionPlan";
 import { formatDisplayDate, formatScheduleLabel, sortTasksBySchedule } from "../utils/datetime";
 import { requestCalendarPermissions, syncTaskToCalendar } from "../hooks/useCalendarSync";
-import { TimeSlotModal } from "../components/TimeSlotModal";
 import { useTaskSchedule } from "../hooks/useTaskSchedule";
 import type { RootStackParamList } from "../../types/navigation";
 
@@ -38,12 +37,11 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
     setTasks,
     regenerate,
   } = useResolutionPlan({ resolutionId, userId, initialResolution });
-  const { getAvailableTimes } = useTaskSchedule(userId);
+  const { isSlotTaken } = useTaskSchedule(userId);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [success, setSuccess] = useState<ApprovalResponse | null>(null);
-  const [pickerState, setPickerState] = useState<{ taskId: string; value: Date } | null>(null);
-  const [timePickerState, setTimePickerState] = useState<{ taskId: string; day: string; options: string[] } | null>(null);
+  const [pickerState, setPickerState] = useState<{ taskId: string; mode: "date" | "time"; value: Date } | null>(null);
   const [newTaskIdCounter, setNewTaskIdCounter] = useState(0);
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [syncingAll, setSyncingAll] = useState(false);
@@ -149,36 +147,53 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
     const value = parseDate(task.scheduled_day) ?? new Date();
     setPickerState({
       taskId: task.id,
+      mode: "date",
       value,
     });
   };
 
-  const openTimeSlotPicker = (task: EditableTask) => {
+  const openTimePicker = (task: EditableTask) => {
     if (!task.scheduled_day) {
       Alert.alert("Pick a date", "Set a day before picking a time.");
       return;
     }
-    const blocked = tasks
-      .filter((entry) => entry.id !== task.id && entry.scheduled_day === task.scheduled_day && entry.scheduled_time)
-      .map((entry) => entry.scheduled_time as string)
-      .filter(Boolean);
-    const options = getAvailableTimes(task.scheduled_day, {
-      currentTime: task.scheduled_time || null,
-      blocked,
+    const value = parseTime(task.scheduled_time) ?? new Date();
+    setPickerState({
+      taskId: task.id,
+      mode: "time",
+      value,
     });
-    if (!options.length) {
-      Alert.alert("No slots", "All standard slots are full for this day. Pick another date.");
-      return;
-    }
-    setTimePickerState({ taskId: task.id, day: task.scheduled_day, options });
   };
 
   const closePicker = () => setPickerState(null);
 
   const confirmPicker = () => {
     if (!pickerState) return;
-    const formatted = formatDate(pickerState.value);
-    updateTaskField(pickerState.taskId, "scheduled_day", formatted);
+    const target = tasks.find((task) => task.id === pickerState.taskId);
+    if (!target) {
+      closePicker();
+      return;
+    }
+    const ignoreTimes = target.original?.scheduled_time ? [target.original.scheduled_time] : [];
+    if (pickerState.mode === "date") {
+      const formattedDay = formatDate(pickerState.value);
+      if (target.scheduled_time && isSlotTaken(formattedDay, target.scheduled_time, { ignoreTimes })) {
+        Alert.alert("Slot taken", "Another task already uses that day/time.");
+        return;
+      }
+      updateTaskField(pickerState.taskId, "scheduled_day", formattedDay);
+    } else {
+      if (!target.scheduled_day) {
+        Alert.alert("Pick a date", "Select a day before setting a time.");
+        return;
+      }
+      const formattedTime = formatTime(pickerState.value);
+      if (isSlotTaken(target.scheduled_day, formattedTime, { ignoreTimes })) {
+        Alert.alert("Slot taken", "Another task already uses that time.");
+        return;
+      }
+      updateTaskField(pickerState.taskId, "scheduled_time", formattedTime);
+    }
     closePicker();
   };
 
@@ -437,7 +452,7 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.pillButton}
-                          onPress={() => openTimeSlotPicker(task)}
+                          onPress={() => openTimePicker(task)}
                           disabled={pending || !!success}
                         >
                           <Text style={styles.pillText}>{task.scheduled_time || "Pick time"}</Text>
@@ -514,10 +529,12 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
         <Modal transparent animationType="fade">
           <View style={styles.pickerBackdrop}>
             <View style={styles.pickerCard}>
-              <Text style={styles.sectionTitleSerif}>Pick a date</Text>
+              <Text style={styles.sectionTitleSerif}>
+                {pickerState.mode === "date" ? "Pick a date" : "Pick a time"}
+              </Text>
               <DateTimePicker
                 value={pickerState.value}
-                mode="date"
+                mode={pickerState.mode}
                 display="spinner"
                 onChange={(_, date) => {
                   if (date) {
@@ -537,18 +554,6 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
           </View>
         </Modal>
       ) : null}
-      <TimeSlotModal
-        visible={!!timePickerState}
-        day={timePickerState?.day ?? ""}
-        options={timePickerState?.options ?? []}
-        onClose={() => setTimePickerState(null)}
-        onSelect={(slot) => {
-          if (timePickerState) {
-            updateTaskField(timePickerState.taskId, "scheduled_time", slot);
-          }
-          setTimePickerState(null);
-        }}
-      />
     </KeyboardAvoidingView>
   );
 }
@@ -897,6 +902,15 @@ function parseDate(value: string): Date | null {
   return new Date(year, month - 1, day);
 }
 
+function parseTime(value: string): Date | null {
+  if (!value) return null;
+  const [hours, minutes] = value.split(":").map(Number);
+  if (hours == null || minutes == null || Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+}
+
 const pad = (num: number) => num.toString().padStart(2, "0");
 
 function formatDate(date: Date): string {
@@ -904,4 +918,8 @@ function formatDate(date: Date): string {
   const month = pad(date.getMonth() + 1);
   const day = pad(date.getDate());
   return `${year}-${month}-${day}`;
+}
+
+function formatTime(date: Date): string {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }

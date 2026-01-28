@@ -37,6 +37,7 @@ from app.services.job_runner import (
     run_interventions_for_all_users,
     run_weekly_plan_for_all_users,
 )
+from app.services.task_reminder import run_task_reminder_check
 
 
 def main() -> None:
@@ -66,11 +67,19 @@ def main() -> None:
         settings.intervention_job_hour,
         settings.intervention_job_minute,
     )
+    logger.info(
+        "Notifications config: enabled=%s provider=%s reminder_interval=%s lookahead=%s",
+        settings.notifications_enabled,
+        settings.notifications_provider,
+        settings.task_reminder_interval_minutes,
+        settings.task_reminder_lookahead_minutes,
+    )
     scheduler.start()
     if settings.jobs_run_on_startup:
         logger.info("Running jobs once on startup")
         _run_weekly_plan_job()
         _run_intervention_job()
+        _run_task_reminder_job()
 
     stop_event = threading.Event()
 
@@ -110,8 +119,15 @@ def _register_jobs(scheduler: BackgroundScheduler) -> None:
         id="interventions_job",
         replace_existing=True,
     )
+    scheduler.add_job(
+        _run_task_reminder_job,
+        trigger="interval",
+        minutes=max(1, settings.task_reminder_interval_minutes),
+        id="task_reminders_job",
+        replace_existing=True,
+    )
     logger.info(
-        "Registered jobs (tz=%s): weekly_plan=%s %02d:%02d, interventions=%s %02d:%02d",
+        "Registered jobs (tz=%s): weekly_plan=%s %02d:%02d, interventions=%s %02d:%02d, task_reminders every %s min",
         settings.scheduler_timezone,
         weekly_day,
         settings.weekly_job_hour,
@@ -119,6 +135,7 @@ def _register_jobs(scheduler: BackgroundScheduler) -> None:
         intervention_day,
         settings.intervention_job_hour,
         settings.intervention_job_minute,
+        settings.task_reminder_interval_minutes,
     )
 
 
@@ -134,6 +151,14 @@ def _run_intervention_job() -> None:
     _execute_job(
         job_name="interventions",
         runner=run_interventions_for_all_users,
+        scheduled_run_time=datetime.now(timezone.utc),
+    )
+
+
+def _run_task_reminder_job() -> None:
+    _execute_job(
+        job_name="task_reminders",
+        runner=run_task_reminder_check,
         scheduled_run_time=datetime.now(timezone.utc),
     )
 
@@ -192,6 +217,8 @@ def _validate_config() -> None:
         raise ValueError("INTERVENTION_JOB_HOUR must be between 0 and 23")
     if not (0 <= settings.intervention_job_minute <= 59):
         raise ValueError("INTERVENTION_JOB_MINUTE must be between 0 and 59")
+    if settings.task_reminder_interval_minutes < 1:
+        raise ValueError("TASK_REMINDER_INTERVAL_MINUTES must be >= 1")
 
 
 def _wait_forever(stop_event: threading.Event) -> None:

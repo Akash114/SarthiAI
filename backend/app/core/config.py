@@ -1,5 +1,6 @@
 """Application configuration managed via environment variables."""
 from functools import lru_cache
+from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,7 +13,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     database_url: str = "postgresql+psycopg2://alion@localhost:5432/sarthiai"
     opik_enabled: bool = False
-    opik_api_key: str | None = None
+    opik_api_key: Optional[str] = None
     opik_project: str = "sarthiai"
     scheduler_enabled: bool = True
     scheduler_timezone: str = "UTC"
@@ -25,7 +26,10 @@ class Settings(BaseSettings):
     jobs_run_on_startup: bool = True
     notifications_enabled: bool = False
     notifications_provider: str = "noop"
-    openai_api_key: str | None = None
+    openai_api_key: Optional[str] = None
+    task_reminder_interval_minutes: int = 5
+    task_reminder_lookahead_minutes: int = 30
+    expo_push_url: str = "https://exp.host/--/api/v2/push/send"
 
 
 @lru_cache

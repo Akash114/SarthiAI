@@ -5,6 +5,7 @@ from app.db.models.resolution import Resolution
 from app.db.models.task import Task
 from app.db.models.user import User
 from app.db.models.user_preferences import UserPreferences
+from app.db.models.notification_token import NotificationToken
 
 __all__ = [
     "AgentActionLog",
@@ -13,4 +14,5 @@ __all__ = [
     "Task",
     "User",
     "UserPreferences",
+    "NotificationToken",
 ]

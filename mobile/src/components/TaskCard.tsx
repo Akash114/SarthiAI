@@ -4,6 +4,7 @@ import { formatScheduleLabel } from "../utils/datetime";
 import { hasCalendarPermissions, isTaskSynced, requestCalendarPermissions, syncTaskToCalendar } from "../hooks/useCalendarSync";
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import { useNotifications } from "../hooks/useNotifications";
+import { useUserId } from "../state/user";
 
 export type TaskCardTask = {
   id: string;
@@ -39,6 +40,7 @@ export function TaskCard({
   const [alreadySynced, setAlreadySynced] = useState(false);
   const [reminderScheduled, setReminderScheduled] = useState(false);
   const { registerForPushNotificationsAsync, scheduleTaskReminder } = useNotifications();
+  const { userId } = useUserId();
 
   useEffect(() => {
     let mounted = true;
@@ -118,7 +120,7 @@ export function TaskCard({
       return;
     }
     try {
-      const granted = await registerForPushNotificationsAsync();
+      const granted = await registerForPushNotificationsAsync(userId);
       if (!granted) {
         Alert.alert("Permission needed", "Enable push notifications in Settings to get reminders.");
         return;
