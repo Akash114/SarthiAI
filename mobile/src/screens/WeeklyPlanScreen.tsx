@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -9,18 +9,24 @@ import {
   View,
   Platform,
 } from "react-native";
-import { Sun, Coffee, Circle } from "lucide-react-native";
+import { Sun, Circle } from "lucide-react-native";
 import { getWeeklyPlanLatest, runWeeklyPlan, WeeklyPlanResponse } from "../api/weeklyPlan";
 import { useUserId } from "../state/user";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../types/navigation";
+import { useActiveResolutions } from "../hooks/useActiveResolutions";
 
 type WeeklyPlanNav = NativeStackNavigationProp<RootStackParamList, "WeeklyPlan">;
 
 export default function WeeklyPlanScreen() {
   const { userId, loading: userLoading } = useUserId();
   const navigation = useNavigation<WeeklyPlanNav>();
+  const {
+    hasActiveResolutions,
+    loading: activeResolutionsLoading,
+    refresh: refreshActiveResolutions,
+  } = useActiveResolutions(userId);
   const [plan, setPlan] = useState<WeeklyPlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,10 +53,27 @@ export default function WeeklyPlanScreen() {
   }, [userId]);
 
   useEffect(() => {
-    if (!userLoading && userId) {
-      fetchPlan();
+    if (!userLoading && userId && hasActiveResolutions !== null) {
+      if (hasActiveResolutions) {
+        fetchPlan();
+      } else {
+        setPlan(null);
+        setLoading(false);
+        setNotFound(true);
+      }
     }
-  }, [fetchPlan, userId, userLoading]);
+  }, [fetchPlan, userId, userLoading, hasActiveResolutions]);
+
+  const hasRunInitialFocus = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasRunInitialFocus.current) {
+        hasRunInitialFocus.current = true;
+        return;
+      }
+      refreshActiveResolutions();
+    }, [refreshActiveResolutions]),
+  );
 
   const handleGenerate = async () => {
     if (!userId) return;
@@ -68,7 +91,22 @@ export default function WeeklyPlanScreen() {
     }
   };
 
-  if ((userLoading || loading) && !refreshing) {
+  if (!userLoading && !activeResolutionsLoading && hasActiveResolutions === false) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.emptyTitle}>Start with a resolution</Text>
+        <Text style={styles.helper}>Create a resolution to unlock weekly planning.</Text>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("ResolutionCreate")}>
+          <Text style={styles.buttonText}>Create Resolution</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.linkButton} onPress={refreshActiveResolutions}>
+          <Text style={styles.linkText}>Check again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if ((userLoading || loading || activeResolutionsLoading) && !refreshing) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color="#6B8DBF" />
@@ -139,7 +177,7 @@ export default function WeeklyPlanScreen() {
         </>
       ) : null}
 
-      {!plan ? (
+      {!plan && hasActiveResolutions ? (
         <View style={styles.emptyState}>
           <Sun size={48} color="#FDBA74" />
           <Text style={styles.emptyTitle}>Ready to plan your week?</Text>

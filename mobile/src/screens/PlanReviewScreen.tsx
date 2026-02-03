@@ -355,6 +355,16 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
   );
   const displayTasks = isEditableWeek ? editableTasksOrdered : readOnlyTasksOrdered;
   const focusForSelectedWeek = selectedSection?.focus ?? "";
+  const selectedMilestone = useMemo(() => {
+    if (!plan?.plan?.milestones) return null;
+    return plan.plan.milestones.find(
+      (milestone) =>
+        milestone.week === selectedWeek ||
+        // Support legacy week_number keys if present
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (milestone as any).week_number === selectedWeek,
+    );
+  }, [plan, selectedWeek]);
   const shouldShowTaskSection = isEditableWeek ? tasks.length > 0 : weekSections.length > 0;
   const showUpcomingBanner = !isEditableWeek && currentStatus === "draft";
 
@@ -408,6 +418,16 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
               <Text style={styles.focusLabel}>
                 Focus: {focusForSelectedWeek || "Reinforce your routine"}
               </Text>
+              {selectedMilestone?.success_criteria?.length ? (
+                <View style={styles.goalCard}>
+                  <Text style={styles.goalTitle}>Success signals</Text>
+                  {selectedMilestone.success_criteria.map((criterion, idx) => (
+                    <Text key={`${selectedMilestone.week}-${idx}`} style={styles.goalBullet}>
+                      • {criterion}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -631,8 +651,30 @@ const styles = StyleSheet.create({
   },
   focusLabel: {
     marginTop: 14,
-    color: "#334155",
+    marginBottom: 8,
+    color: "#1F2933",
+    fontWeight: "700",
     fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
+  },
+  goalCard: {
+    backgroundColor: "#EEF2FF",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#CBD5F5",
+    gap: 6,
+  },
+  goalTitle: {
+    fontWeight: "700",
+    color: "#1D4ED8",
+  },
+  goalList: {
+    marginTop: 4,
+    gap: 4,
+  },
+  goalBullet: {
+    color: "#1E3A8A",
+    fontSize: 13,
   },
   taskSection: {
     gap: 12,

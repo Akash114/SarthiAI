@@ -1,11 +1,22 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import type { RootStackParamList } from "../../types/navigation";
 import { createTask } from "../api/tasks";
 import { useUserId } from "../state/user";
-import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import DateTimePicker, { DateTimePickerAndroid, DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useTaskSchedule } from "../hooks/useTaskSchedule";
 
 type Props = NativeStackScreenProps<RootStackParamList, "TaskCreate">;
@@ -49,9 +60,51 @@ export default function TaskCreateScreen() {
     }
   };
 
+  const applySelection = (mode: "date" | "time", selectedDate: Date) => {
+    if (mode === "date") {
+      const formatted = formatDate(selectedDate);
+      if (scheduledTime && isSlotTaken(formatted, scheduledTime)) {
+        Alert.alert("Slot taken", "Another task already uses that day/time.");
+        return false;
+      }
+      setScheduledDay(formatted);
+    } else {
+      if (!scheduledDay) {
+        Alert.alert("Pick a date", "Choose a day before selecting a time.");
+        return false;
+      }
+      const formatted = formatTime(selectedDate);
+      if (isSlotTaken(scheduledDay, formatted)) {
+        Alert.alert("Slot taken", "Another task already uses that time.");
+        return false;
+      }
+      setScheduledTime(formatted);
+    }
+    return true;
+  };
+
   const openPicker = (mode: "date" | "time") => {
     const value =
       mode === "date" ? parseDate(scheduledDay) ?? new Date() : parseTime(scheduledTime) ?? new Date();
+
+    if (Platform.OS === "android") {
+      if (mode === "time" && !scheduledDay) {
+        Alert.alert("Pick a date", "Choose a day before selecting a time.");
+        return;
+      }
+      DateTimePickerAndroid.open({
+        mode,
+        value,
+        is24Hour: true,
+        onChange: (_event, selectedDate) => {
+          if (selectedDate) {
+            applySelection(mode, selectedDate);
+          }
+        },
+      });
+      return;
+    }
+
     setPickerState({ mode, value });
   };
 
@@ -64,26 +117,10 @@ export default function TaskCreateScreen() {
 
   const confirmPicker = () => {
     if (!pickerState) return;
-    if (pickerState.mode === "date") {
-      const formatted = formatDate(pickerState.value);
-      if (scheduledTime && isSlotTaken(formatted, scheduledTime)) {
-        Alert.alert("Slot taken", "Another task already uses that day/time.");
-        return;
-      }
-      setScheduledDay(formatted);
-    } else {
-      if (!scheduledDay) {
-        Alert.alert("Pick a date", "Choose a day before selecting a time.");
-        return;
-      }
-      const formatted = formatTime(pickerState.value);
-      if (isSlotTaken(scheduledDay, formatted)) {
-        Alert.alert("Slot taken", "Another task already uses that time.");
-        return;
-      }
-      setScheduledTime(formatted);
+    const success = applySelection(pickerState.mode, pickerState.value);
+    if (success) {
+      closePicker();
     }
-    closePicker();
   };
 
   return (

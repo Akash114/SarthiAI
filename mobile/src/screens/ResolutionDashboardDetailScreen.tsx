@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View, TouchableOpacity
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../types/navigation";
 import { fetchDashboard, DashboardResolution } from "../api/dashboard";
+import { getResolution, PlanMilestone } from "../api/resolutions";
 import { listTasks, TaskItem } from "../api/tasks";
 import { useUserId } from "../state/user";
 import { Calendar, CheckCircle, Clock } from "lucide-react-native";
@@ -17,6 +18,7 @@ export default function ResolutionDashboardDetailScreen({ route }: Props) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [milestones, setMilestones] = useState<PlanMilestone[]>([]);
 
   const filterWeekTasks = useMemo(() => {
     if (!resolution) return { scheduled: [], unscheduled: [] as TaskItem[] };
@@ -37,11 +39,15 @@ export default function ResolutionDashboardDetailScreen({ route }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const { dashboard } = await fetchDashboard(userId);
+      const [{ dashboard }, { resolution: resolutionDetail }, { tasks: list }] = await Promise.all([
+        fetchDashboard(userId),
+        getResolution(resolutionId, userId),
+        listTasks(userId, { status: "active" }),
+      ]);
       const entry = dashboard.active_resolutions.find((item) => item.resolution_id === resolutionId) || null;
       setResolution(entry);
-      const { tasks: list } = await listTasks(userId, { status: "active" });
       setTasks(list);
+      setMilestones(resolutionDetail.plan?.milestones ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load this resolution.");
     } finally {
@@ -82,6 +88,8 @@ export default function ResolutionDashboardDetailScreen({ route }: Props) {
   const orderedTasks = sortTasksBySchedule(combinedTasks);
   const remainingFlow = orderedTasks.filter((task) => !task.completed);
   const completedWins = orderedTasks.filter((task) => task.completed);
+  const focusForWeek = milestones.find((milestone) => milestone.week === currentWeek);
+  const defaultFocus = "Building consistency with daily actions.";
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -130,8 +138,44 @@ export default function ResolutionDashboardDetailScreen({ route }: Props) {
 
       <View style={styles.focusCard}>
         <Text style={styles.sectionLabel}>Current Focus</Text>
-        <Text style={styles.focusText}>Building consistency with daily actions.</Text>
+        <Text style={styles.focusText}>{focusForWeek?.focus || defaultFocus}</Text>
+        {focusForWeek?.success_criteria?.length ? (
+          <View style={styles.goalList}>
+            {focusForWeek.success_criteria.map((criterion, idx) => (
+              <Text key={`criterion-${idx}`} style={styles.goalBullet}>
+                • {criterion}
+              </Text>
+            ))}
+          </View>
+        ) : null}
       </View>
+
+      {milestones.length ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Weekly Goals</Text>
+          {milestones.map((milestone) => (
+            <View
+              key={milestone.week}
+              style={[
+                styles.milestoneCard,
+                milestone.week === currentWeek ? styles.milestoneActive : null,
+              ]}
+            >
+              <Text style={styles.milestoneWeek}>Week {milestone.week}</Text>
+              <Text style={styles.milestoneFocus}>{milestone.focus}</Text>
+              {milestone.success_criteria?.length ? (
+                <View style={styles.goalList}>
+                  {milestone.success_criteria.map((criterion, idx) => (
+                    <Text key={`future-${milestone.week}-${idx}`} style={styles.goalBullet}>
+                      • {criterion}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Remaining Flow</Text>
@@ -261,6 +305,34 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   focusText: {
+    color: "#475569",
+  },
+  goalList: {
+    marginTop: 10,
+    gap: 4,
+  },
+  goalBullet: {
+    color: "#475569",
+    fontSize: 13,
+  },
+  milestoneCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 14,
+    marginBottom: 10,
+    backgroundColor: "#fff",
+  },
+  milestoneActive: {
+    borderColor: "#6B8DBF",
+    backgroundColor: "#EEF2FF",
+  },
+  milestoneWeek: {
+    fontWeight: "700",
+    color: "#1F2933",
+  },
+  milestoneFocus: {
+    marginTop: 4,
     color: "#475569",
   },
   taskCard: {

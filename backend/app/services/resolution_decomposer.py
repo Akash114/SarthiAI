@@ -46,6 +46,7 @@ class WeeklyMilestone(BaseModel):
 
     week_number: int = Field(..., ge=1, le=12)
     focus_summary: str = Field(..., description="Key focus for the week.")
+    success_criteria: List[str] = Field(default_factory=list, description="Signals that show the week stayed on track.")
 
 
 class PlanWeekSection(BaseModel):
@@ -296,6 +297,63 @@ TYPE_DEFAULT_TEMPLATE = {
     "work": "project",
 }
 
+CONSISTENCY_TEMPLATES: Dict[str, Dict[str, Any]] = {
+    "learning": {
+        "title": "Daily focused study",
+        "intent": "Show up every day for a short, high-quality reading or study block.",
+        "duration": 30,
+        "cadence": {"type": "daily", "times": ["evening"]},
+        "note": "Log one takeaway after each session so the learning sticks.",
+    },
+    "habit": {
+        "title": "Micro-habit repetition",
+        "intent": "Reinforce the habit with a tiny, repeatable action anchored to a daily cue.",
+        "duration": 10,
+        "cadence": {"type": "daily", "times": ["morning"]},
+        "note": "Keep it frictionless; focus on showing up, not perfection.",
+    },
+    "health": {
+        "title": "Core practice block",
+        "intent": "Get reps in the primary movement with gentle volume.",
+        "duration": 25,
+        "cadence": {"type": "x_per_week", "count": 4, "times": ["morning"]},
+        "note": "Alternate easy and moderate efforts to avoid burnout.",
+    },
+    "fitness": {
+        "title": "Core practice block",
+        "intent": "Get reps in the primary movement with gentle volume.",
+        "duration": 25,
+        "cadence": {"type": "x_per_week", "count": 4, "times": ["morning"]},
+        "note": "Alternate easy and moderate efforts to avoid burnout.",
+    },
+    "project": {
+        "title": "Daily maker time",
+        "intent": "Reserve a consistent block to advance the deliverable visibly.",
+        "duration": 35,
+        "cadence": {"type": "x_per_week", "count": 4, "times": ["morning"]},
+        "note": "Ship a tiny outcome each block (draft paragraph, outline, proof).",
+    },
+}
+
+SETUP_KEYWORDS = (
+    "setup",
+    "set up",
+    "design",
+    "stage",
+    "organize",
+    "prepare",
+    "select",
+    "acquire",
+    "environment",
+)
+
+WEEKLY_FOCUS_FALLBACKS = [
+    "Lay the foundation and remove obvious friction.",
+    "Stabilize your routine with gentle repetitions.",
+    "Increase deliberate practice reps while staying kind to yourself.",
+    "Reflect, adjust, and celebrate the micro wins.",
+]
+
 
 def _detect_specialty_key(user_input: str | None, resolution_type: Optional[str]) -> str:
     text = (user_input or "").lower()
@@ -475,6 +533,7 @@ def decompose_resolution_with_llm(
         user_context,
         trace_metadata,
         request_id,
+        sanitized_weeks,
     )
     print(f"Plan dict: {plan_dict}")
     evaluation = _evaluate_with_observability(plan_dict, band_label, resolution_type, request_id, trace_metadata, refined_goal)
@@ -495,6 +554,7 @@ def decompose_resolution_with_llm(
             user_context,
             trace_metadata,
             request_id,
+            sanitized_weeks,
         )
         if repaired:
             plan_dict = repaired
@@ -512,6 +572,7 @@ def decompose_resolution_with_llm(
             user_context=user_context,
             trace_metadata=trace_metadata,
             request_id=request_id,
+            target_weeks=sanitized_weeks,
         )
         if regenerated:
             plan_dict = regenerated
@@ -603,6 +664,12 @@ def _build_prompts(
         f"{requirements_block}"
         f"{specialty_block}"
         f"{learning_block}"
+        "### STEP 4: MULTI-WEEK ARC\n"
+        "- Create a milestone for **every** week (1 through the duration). Each entry must include:\n"
+        "  • `week_number`: the index (1-indexed)\n"
+        "  • `focus_summary`: a short sentence describing the weekly goal\n"
+        "  • `success_criteria`: 2-3 bullet statements that show what 'good' looks like for that week\n"
+        "- Later weeks can describe focus areas or checkpoints even if specific tasks are not scheduled yet.\n\n"
         "### OUTPUT REQUIREMENT\n"
         "Return strictly valid JSON matching this schema:\n"
         f"{schema_json}"
@@ -618,6 +685,7 @@ def _generate_plan_via_llm(
     user_context: Optional[Dict[str, Any]],
     trace_metadata: Dict[str, Any],
     request_id: Optional[str],
+    target_weeks: Optional[int] = None,
 ) -> Dict[str, Any]:
     with trace("plan.generate", metadata=trace_metadata, request_id=request_id):
         completion = client.chat.completions.create(
@@ -627,11 +695,11 @@ def _generate_plan_via_llm(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-        )
+    )
     content = completion.choices[0].message.content or "{}"
     plan = ResolutionPlan.model_validate_json(content)
     plan_dict = plan.model_dump()
-    return _post_process_plan(plan_dict, resolution_type, user_context)
+    return _post_process_plan(plan_dict, resolution_type, user_context, target_weeks)
 
 
 def _repair_plan_via_llm(
@@ -643,6 +711,7 @@ def _repair_plan_via_llm(
     user_context: Optional[Dict[str, Any]],
     trace_metadata: Dict[str, Any],
     request_id: Optional[str],
+    target_weeks: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     repair_prompt = (
         "The earlier plan violated Sarthi AI guardrails. Please revise it minimally so it fits the effort band budgets "
@@ -663,7 +732,7 @@ def _repair_plan_via_llm(
         content = completion.choices[0].message.content or "{}"
         plan = ResolutionPlan.model_validate_json(content)
         plan_dict = plan.model_dump()
-        return _post_process_plan(plan_dict, resolution_type, user_context)
+        return _post_process_plan(plan_dict, resolution_type, user_context, target_weeks)
     except Exception:  # pragma: no cover - defensive
         return None
 
@@ -677,6 +746,7 @@ def _regenerate_plan_with_feedback(
     user_context: Optional[Dict[str, Any]],
     trace_metadata: Dict[str, Any],
     request_id: Optional[str],
+    target_weeks: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     feedback = _format_evaluation_feedback(evaluation)
     augmented_prompt = (
@@ -695,6 +765,7 @@ def _regenerate_plan_with_feedback(
             user_context,
             trace_metadata,
             request_id,
+            target_weeks,
         )
         return plan_dict
     except Exception:  # pragma: no cover - defensive
@@ -705,28 +776,180 @@ def _post_process_plan(
     plan_dict: Dict[str, Any],
     resolution_type: Optional[str],
     user_context: Optional[Dict[str, Any]],
+    target_weeks: Optional[int] = None,
 ) -> Dict[str, Any]:
-    enriched_week1 = _enrich_tasks_with_schedule(
+    normalized_week_one = _prepare_week_one_tasks(
         plan_dict.get("week_1_tasks", []),
+        resolution_type,
+        plan_dict.get("resolution_title"),
+    )
+    plan_dict["week_1_tasks"] = normalized_week_one
+    enriched_week1 = _enrich_tasks_with_schedule(
+        normalized_week_one,
         resolution_type,
         user_context,
         repeat_daily=True,
     )
     plan_dict["week_1_tasks"] = enriched_week1
-    if not plan_dict.get("weeks"):
-        plan_dict["weeks"] = [
+    milestones = _normalize_milestones(plan_dict, target_weeks)
+    existing_weeks = {
+        entry.get("week"): entry
+        for entry in plan_dict.get("weeks") or []
+        if isinstance(entry, dict) and isinstance(entry.get("week"), int)
+    }
+    week_sections: List[Dict[str, Any]] = []
+    for milestone in milestones:
+        week_num = milestone["week_number"]
+        base_entry = existing_weeks.get(week_num, {})
+        tasks_value = enriched_week1 if week_num == 1 else base_entry.get("tasks", [])
+        week_sections.append(
             {
-                "week": milestone.get("week_number") or milestone.get("week"),
-                "focus": milestone.get("focus_summary") or milestone.get("focus"),
-                "tasks": enriched_week1 if idx == 0 else [],
+                "week": week_num,
+                "focus": milestone["focus_summary"],
+                "tasks": tasks_value,
             }
-            for idx, milestone in enumerate(plan_dict.get("milestones", []))
-        ]
-    else:
-        first_week = plan_dict["weeks"][0] if plan_dict["weeks"] else None
-        if first_week is not None:
-            first_week["tasks"] = enriched_week1
+        )
+    plan_dict["weeks"] = week_sections
     return plan_dict
+
+
+def _prepare_week_one_tasks(
+    tasks: List[Dict[str, Any]],
+    resolution_type: Optional[str],
+    resolution_title: Optional[str],
+) -> List[Dict[str, Any]]:
+    normalized: List[Dict[str, Any]] = []
+    has_consistency = False
+    for entry in tasks or []:
+        cleaned = dict(entry)
+        if _is_setup_task(cleaned.get("title", "")):
+            duration = _extract_duration(cleaned)
+            cleaned["estimated_duration_min"] = min(duration, 20)
+            note = cleaned.get("note") or ""
+            if "15" not in note:
+                cleaned["note"] = (note + " ").strip() + "Keep this under 15 minutes so energy goes to the main habit."
+        if _cadence_supports_consistency(cleaned.get("cadence")):
+            has_consistency = True
+        normalized.append(cleaned)
+    if not has_consistency:
+        normalized.append(_build_consistency_task(resolution_type, resolution_title))
+    return normalized
+
+
+def _is_setup_task(title: str | None) -> bool:
+    if not isinstance(title, str):
+        return False
+    lowered = title.lower()
+    return any(keyword in lowered for keyword in SETUP_KEYWORDS)
+
+
+def _cadence_supports_consistency(raw_cadence: Any) -> bool:
+    cadence = raw_cadence
+    if isinstance(raw_cadence, dict):
+        cadence_type = str(raw_cadence.get("type") or "").lower()
+        count = raw_cadence.get("count") or raw_cadence.get("times_per_week")
+    elif isinstance(raw_cadence, str):
+        cadence_type = raw_cadence.lower()
+        count = None
+    else:
+        cadence_type = ""
+        count = None
+    if cadence_type in {"daily", "everyday"}:
+        return True
+    if cadence_type in {"x_per_week", "times_per_week"}:
+        try:
+            number = int(count or 0)
+        except (TypeError, ValueError):
+            number = 0
+        return number >= 3
+    return False
+
+
+def _build_consistency_task(resolution_type: Optional[str], resolution_title: Optional[str]) -> Dict[str, Any]:
+    template = _consistency_template_for_type(resolution_type)
+    focus = resolution_title or "your goal"
+    cadence_struct = template.get("cadence") or {"type": "daily", "times": ["morning"]}
+    return {
+        "title": template["title"],
+        "intent": template["intent"],
+        "estimated_duration_min": template.get("duration", 25),
+        "cadence": cadence_struct,
+        "note": f"{template.get('note', 'Track a tiny win.')} ({focus})",
+        "confidence": "medium",
+    }
+
+
+def _consistency_template_for_type(resolution_type: Optional[str]) -> Dict[str, Any]:
+    normalized = (resolution_type or "").lower()
+    candidates = [
+        normalized,
+        TYPE_DEFAULT_TEMPLATE.get(normalized),
+        "learning",
+    ]
+    for key in candidates:
+        if key and key in CONSISTENCY_TEMPLATES:
+            return CONSISTENCY_TEMPLATES[key]
+    return CONSISTENCY_TEMPLATES["learning"]
+
+
+def _normalize_milestones(plan_dict: Dict[str, Any], target_weeks: Optional[int]) -> List[Dict[str, Any]]:
+    raw_entries = plan_dict.get("milestones") or []
+    normalized: List[Dict[str, Any]] = []
+    seen_weeks: set[int] = set()
+    max_weeks = target_weeks or plan_dict.get("duration_weeks") or len(raw_entries) or 4
+    try:
+        max_weeks = int(max_weeks)
+    except Exception:
+        max_weeks = 4
+    max_weeks = max(1, min(12, max_weeks))
+
+    for entry in raw_entries:
+        if not isinstance(entry, dict):
+            continue
+        week_value = entry.get("week_number") or entry.get("week")
+        if not isinstance(week_value, int):
+            continue
+        focus_value = entry.get("focus_summary") or entry.get("focus")
+        focus_text = focus_value.strip() if isinstance(focus_value, str) else ""
+        if not focus_text:
+            focus_text = f"Stay intentional during Week {week_value}."
+        criteria = entry.get("success_criteria") or []
+        criteria_list = [str(item).strip() for item in criteria if isinstance(item, (str, int, float))]
+        normalized.append(
+            {
+                "week_number": week_value,
+                "focus_summary": focus_text,
+                "success_criteria": criteria_list,
+            }
+        )
+        seen_weeks.add(week_value)
+
+    if not normalized:
+        normalized.append(
+            {
+                "week_number": 1,
+                "focus_summary": "Lay the foundation with kind setup rituals.",
+                "success_criteria": ["Complete the environment prep task.", "Log at least one gentle repetition."],
+            }
+        )
+        seen_weeks.add(1)
+
+    for week in range(1, max_weeks + 1):
+        if week in seen_weeks:
+            continue
+        fallback_focus = WEEKLY_FOCUS_FALLBACKS[min(len(WEEKLY_FOCUS_FALLBACKS) - 1, week - 1)]
+        normalized.append(
+            {
+                "week_number": week,
+                "focus_summary": fallback_focus,
+                "success_criteria": [],
+            }
+        )
+
+    normalized.sort(key=lambda entry: entry["week_number"])
+    plan_dict["milestones"] = normalized
+    plan_dict["duration_weeks"] = max_weeks
+    return normalized
 
 
 def _evaluate_with_observability(
@@ -883,12 +1106,32 @@ def _fallback_plan(
         "Practice the core habit consistently with checkpoints.",
         "Review progress and celebrate micro wins.",
     ]
+    success_templates = [
+        [
+            "Complete the environment setup so starting feels easy.",
+            "Log at least one gentle repetition to prove momentum.",
+        ],
+        [
+            "Show up for two short intentional sessions.",
+            "Capture one reflection about friction or ease.",
+        ],
+        [
+            "Hit the planned cadence without exceeding the effort band.",
+            "Note one lesson that will make Week 4 lighter.",
+        ],
+        [
+            "Review progress and archive wins in your journal.",
+            "Decide on one celebratory action or reset ritual.",
+        ],
+    ]
     for week in range(1, weeks + 1):
         focus = focus_templates[min(week - 1, len(focus_templates) - 1)]
+        criteria = success_templates[min(week - 1, len(success_templates) - 1)]
         milestones.append(
             WeeklyMilestone(
                 week_number=week,
                 focus_summary=f"{focus} (Week {week})",
+                success_criteria=[_format_template_text(item, goal_focus) for item in criteria],
             )
         )
 

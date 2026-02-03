@@ -39,13 +39,19 @@ class InterventionPreviewResponse(BaseModel):
     request_id: str
 
 
-class InterventionResponse(InterventionPreviewResponse):
+class InterventionSnapshotResponse(InterventionPreviewResponse):
     pass
 
 
 class InterventionRunRequest(BaseModel):
     user_id: UUID
     force: bool = False
+
+
+class InterventionResponse(BaseModel):
+    user_id: UUID
+    option_key: str
+
 
 
 class InterventionHistoryItem(BaseModel):
@@ -70,5 +76,5 @@ class InterventionHistoryDetailResponse(BaseModel):
     created_at: str
     week_start: str
     week_end: str
-    snapshot: InterventionResponse
+    snapshot: InterventionSnapshotResponse
     request_id: str

@@ -7,8 +7,8 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.db.models.agent_action_log import AgentActionLog
-from app.db.models.user import User
 from app.db.models.user_preferences import UserPreferences
+from app.services.user_service import get_or_create_user
 
 
 DEFAULTS = {
@@ -23,9 +23,8 @@ def get_or_create_preferences(db: Session, user_id: UUID) -> UserPreferences:
     if prefs:
         return prefs
 
-    user = db.get(User, user_id)
-    if not user:
-        raise ValueError("User not found")
+    # Ensure a user row exists so downstream preference toggles work on first login.
+    get_or_create_user(db, user_id)
 
     prefs = UserPreferences(user_id=user_id, **DEFAULTS)
     db.add(prefs)

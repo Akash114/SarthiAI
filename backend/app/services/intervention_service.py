@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, time, timezone
 from typing import Dict, List, Tuple
 from uuid import UUID
 
@@ -15,6 +15,9 @@ from app.api.schemas.interventions import InterventionCard, InterventionOption, 
 from app.db.models.agent_action_log import AgentActionLog
 from app.db.models.user import User
 from app.db.models.task import Task
+from app.db.models.resolution import Resolution
+from app.core.config import settings
+from zoneinfo import ZoneInfo
 
 
 @dataclass
@@ -28,6 +31,13 @@ class InterventionPreview:
 class SnapshotResult:
     log: AgentActionLog
     created: bool
+
+
+OPTION_ALIASES = {
+    "get_back_on_track": "reschedule",
+    "adjust_goal": "reduce_scope",
+    "pause": "reflect",
+}
 
 
 def get_intervention_preview(db: Session, user_id: UUID) -> InterventionPreview:
@@ -82,6 +92,10 @@ def persist_intervention_preview(
             week_end=week_end_iso,
         )
         if existing:
+            if _apply_preview_to_existing_log(existing, preview, request_id):
+                db.add(existing)
+                db.commit()
+                db.refresh(existing)
             return SnapshotResult(log=existing, created=False)
 
     payload = {
@@ -141,7 +155,8 @@ def _find_existing_snapshot(
 
 
 def _collect_slippage_stats(tasks: List[Task]) -> Dict[str, float | int]:
-    today = date.today()
+    now = datetime.now(ZoneInfo(settings.scheduler_timezone))
+    today = now.date()
     window_start = today - timedelta(days=6)
 
     relevant_tasks: List[Task] = []
@@ -160,13 +175,7 @@ def _collect_slippage_stats(tasks: List[Task]) -> Dict[str, float | int]:
     )
     completion_rate = round((completed / total) if total else 0.0, 2)
 
-    missed_scheduled = sum(
-        1
-        for task in relevant_tasks
-        if task.scheduled_day
-        and task.scheduled_day <= today
-        and not task.completed
-    )
+    missed_scheduled = sum(1 for task in relevant_tasks if _task_is_past_due(task, now))
 
     return {
         "total": total,
@@ -220,7 +229,13 @@ def _determine_intervention_card(stats: Dict[str, float | int]) -> InterventionC
         )
         content = response.choices[0].message.content or "{}"
         payload = json.loads(content)
-        return InterventionCard.model_validate(payload)
+        llm_card = InterventionCard.model_validate(payload)
+        return InterventionCard(
+            title=llm_card.title or "Let's Adjust This Week",
+            message=llm_card.message
+            or _default_message(stats.get("completion_rate"), stats.get("missed_scheduled")),
+            options=_standard_options(),
+        )
     except Exception:
         return _build_card(stats)
 
@@ -228,13 +243,24 @@ def _determine_intervention_card(stats: Dict[str, float | int]) -> InterventionC
 def _build_card(stats: Dict[str, float | int]) -> InterventionCard:
     completion_rate = stats["completion_rate"]
     missed = stats["missed_scheduled"]
-    title = "Let's Adjust This Week"
-    message = (
-        "I'm noticing progress is light"
-        f" (completion {int(completion_rate * 100)}%, missed {missed}). Which support feels best?"
+    return InterventionCard(
+        title="Let's Adjust This Week",
+        message=_default_message(completion_rate, missed),
+        options=_standard_options(),
     )
 
-    options = [
+
+def _default_message(completion_rate: float | int, missed: float | int) -> str:
+    pct = int((completion_rate or 0) * 100)
+    missed_value = int(missed or 0)
+    return (
+        "I'm noticing progress is light "
+        f"(completion {pct}%, missed {missed_value}). Which support feels best?"
+    )
+
+
+def _standard_options() -> List[InterventionOption]:
+    return [
         InterventionOption(
             key="reduce_scope",
             label="Reduce Scope",
@@ -251,9 +277,182 @@ def _build_card(stats: Dict[str, float | int]) -> InterventionCard:
             details="Pause to jot one sentence on what's blocking you. I’ll adapt next week’s plan.",
         ),
     ]
-    return InterventionCard(title=title, message=message, options=options)
 
 
 def _is_draft(task: Task) -> bool:
     metadata = task.metadata_json or {}
     return bool(metadata.get("draft"))
+
+
+def _task_is_past_due(task: Task, reference: datetime) -> bool:
+    if task.completed:
+        return False
+    due_day = task.scheduled_day
+    due_time = task.scheduled_time
+    if due_day:
+        scheduled_time = due_time or time(hour=23, minute=59, second=0)
+        due_dt = datetime.combine(due_day, scheduled_time)
+    elif task.created_at:
+        created = task.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=reference.tzinfo)
+        due_dt = created
+    else:
+        return False
+
+    if due_dt.tzinfo is None:
+        due_dt = due_dt.replace(tzinfo=reference.tzinfo)
+    else:
+        due_dt = due_dt.astimezone(reference.tzinfo)
+
+    # Tasks with times later today are not overdue yet
+    return due_dt <= reference
+
+
+def _apply_preview_to_existing_log(log: AgentActionLog, preview: InterventionPreview, request_id: str | None) -> bool:
+    """Merge the latest preview data into an existing log when a weekly snapshot already exists."""
+    payload = dict(log.action_payload or {})
+    updated = False
+    new_slippage = preview.slippage.model_dump()
+    new_card = preview.card.model_dump() if preview.card else None
+
+    if payload.get("slippage") != new_slippage:
+        payload["slippage"] = new_slippage
+        updated = True
+    if payload.get("card") != new_card:
+        payload["card"] = new_card
+        updated = True
+    if updated:
+        payload["request_id"] = request_id or payload.get("request_id") or ""
+        payload["week_start"] = preview.week[0].isoformat()
+        payload["week_end"] = preview.week[1].isoformat()
+        payload["week"] = {"start": payload["week_start"], "end": payload["week_end"]}
+        log.action_payload = payload
+        log.reason = "Intervention updated"
+    return updated
+
+
+def execute_intervention_option(db: Session, user_id: UUID, option_key: str) -> Dict[str, Any]:
+    """Execute a follow-up action for an intervention selection."""
+    normalized = (option_key or "").strip().lower()
+    canonical = OPTION_ALIASES.get(normalized, normalized)
+    normalized = canonical
+    if normalized == "reduce_scope":
+        return _execute_reduce_scope(db, user_id)
+    if normalized == "reschedule":
+        return _execute_reschedule(db, user_id)
+    if normalized == "reflect":
+        return _execute_reflect(db, user_id)
+    return {"message": "Option applied.", "changes": []}
+
+
+def _execute_reduce_scope(db: Session, user_id: UUID) -> Dict[str, Any]:
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.user_id == user_id,
+            Task.completed.is_(False),
+        )
+        .order_by(
+            Task.scheduled_day.is_(None),
+            Task.scheduled_day.asc(),
+            Task.scheduled_time.asc(),
+            Task.created_at.asc(),
+        )
+        .all()
+    )
+    updated = 0
+    changes: List[str] = []
+    now = datetime.now(timezone.utc)
+    for task in tasks:
+        if updated >= 2:
+            break
+        if _is_draft(task):
+            continue
+        metadata = dict(task.metadata_json or {})
+        metadata.update(
+            {
+                "status": "skipped",
+                "reason": "intervention_reduced",
+                "intervention_updated_at": now.isoformat(),
+            }
+        )
+        task.metadata_json = metadata
+        task.completed = True
+        task.completed_at = now
+        db.add(task)
+        updated += 1
+        when = task.scheduled_day.isoformat() if task.scheduled_day else "unscheduled"
+        changes.append(f"Marked “{task.title}” complete (was scheduled {when}).")
+    if updated:
+        db.commit()
+    message = "I've cleared your next 2 tasks. Breathe easy." if updated else "No additional tasks needed clearing."
+    return {"message": message, "changes": changes}
+
+
+def _execute_reschedule(db: Session, user_id: UUID) -> Dict[str, Any]:
+    today = date.today()
+    window_end = today + timedelta(days=6)
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.user_id == user_id,
+            Task.completed.is_(False),
+            Task.scheduled_day.isnot(None),
+            Task.scheduled_day <= window_end,
+        )
+        .all()
+    )
+    shifted = 0
+    changes: List[str] = []
+    for task in tasks:
+        if _is_draft(task):
+            continue
+        original_day = task.scheduled_day
+        if not original_day:
+            continue
+        anchor = original_day if original_day >= today else today
+        task.scheduled_day = anchor + timedelta(days=2)
+        metadata = dict(task.metadata_json or {})
+        metadata["intervention_updated_at"] = datetime.now(timezone.utc).isoformat()
+        metadata["reason"] = "intervention_rescheduled"
+        task.metadata_json = metadata
+        db.add(task)
+        shifted += 1
+        new_day = task.scheduled_day.isoformat()
+        changes.append(f"Moved “{task.title}” from {original_day.isoformat()} to {new_day}.")
+    if shifted:
+        db.commit()
+    message = "Moved your schedule forward by 2 days." if shifted else "No scheduled tasks were available to shift."
+    return {"message": message, "changes": changes}
+
+
+def _execute_reflect(db: Session, user_id: UUID) -> Dict[str, Any]:
+    tomorrow = date.today() + timedelta(days=1)
+    resolution = (
+        db.query(Resolution)
+        .filter(Resolution.user_id == user_id, Resolution.status == "active")
+        .order_by(Resolution.updated_at.desc())
+        .first()
+    )
+    metadata = {
+        "draft": False,
+        "source": "intervention_reflect",
+    }
+    reflect_task = Task(
+        user_id=user_id,
+        resolution_id=resolution.id if resolution else None,
+        title="5-min Reflection",
+        duration_min=5,
+        scheduled_day=tomorrow,
+        scheduled_time=time(hour=9, minute=0),
+        metadata_json=metadata,
+        completed=False,
+    )
+    db.add(reflect_task)
+    db.commit()
+    when = tomorrow.isoformat()
+    return {
+        "message": "Added a short reflection task for tomorrow.",
+        "changes": [f"Added “{reflect_task.title}” on {when} at 09:00."],
+    }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View, Platform } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { getInterventionHistoryItem, InterventionResponse } from "../api/interventions";
+import { getInterventionHistoryItem, InterventionSnapshot } from "../api/interventions";
 import { useUserId } from "../state/user";
 import type { RootStackParamList } from "../../types/navigation";
 
@@ -10,7 +10,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "InterventionsHistoryDet
 export default function InterventionsHistoryDetailScreen({ route }: Props) {
   const { logId } = route.params;
   const { userId, loading: userLoading } = useUserId();
-  const [snapshot, setSnapshot] = useState<InterventionResponse | null>(null);
+  const [snapshot, setSnapshot] = useState<InterventionSnapshot | null>(null);
   const [meta, setMeta] = useState<{ created_at: string; week_start: string; week_end: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

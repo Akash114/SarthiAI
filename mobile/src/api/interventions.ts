@@ -1,6 +1,6 @@
 import { apiRequest } from "./client";
 
-export type InterventionResponse = {
+export type InterventionSnapshot = {
   user_id: string;
   week: { start: string; end: string };
   slippage: {
@@ -18,14 +18,14 @@ export type InterventionResponse = {
 };
 
 type LatestResult = {
-  intervention: InterventionResponse | null;
+  intervention: InterventionSnapshot | null;
   requestId: string | null;
   notFound: boolean;
 };
 
 export async function getInterventionsLatest(userId: string): Promise<LatestResult> {
   try {
-    const { data, response } = await apiRequest<InterventionResponse>(`/interventions/latest?user_id=${userId}`);
+    const { data, response } = await apiRequest<InterventionSnapshot>(`/interventions/latest?user_id=${userId}`);
     return { intervention: data, requestId: data.request_id || response.headers.get("X-Request-Id"), notFound: false };
   } catch (error) {
     if (error instanceof Error && /404|not found|no intervention snapshot/i.test(error.message)) {
@@ -35,12 +35,32 @@ export async function getInterventionsLatest(userId: string): Promise<LatestResu
   }
 }
 
-export async function runInterventions(userId: string): Promise<{ intervention: InterventionResponse; requestId: string | null }> {
-  const { data, response } = await apiRequest<InterventionResponse>("/interventions/run", {
+export async function runInterventions(userId: string): Promise<{ intervention: InterventionSnapshot; requestId: string | null }> {
+  const { data, response } = await apiRequest<InterventionSnapshot>("/interventions/run", {
     method: "POST",
     body: { user_id: userId },
   });
   return { intervention: data, requestId: data.request_id || response.headers.get("X-Request-Id") };
+}
+
+export async function respondToIntervention(
+  userId: string,
+  optionKey: string,
+): Promise<{ message: string; changes: string[]; snapshot: InterventionSnapshot | null }> {
+  const { data } = await apiRequest<{
+    success: boolean;
+    message: string;
+    changes?: string[];
+    snapshot?: InterventionSnapshot | null;
+  }>("/interventions/respond", {
+    method: "POST",
+    body: { user_id: userId, option_key: optionKey },
+  });
+  return {
+    message: data.message,
+    changes: data.changes ?? [],
+    snapshot: data.snapshot ?? null,
+  };
 }
 
 export type InterventionHistoryItem = {
@@ -67,13 +87,13 @@ export async function listInterventionsHistory(userId: string, limit = 20): Prom
 }
 
 export async function getInterventionHistoryItem(userId: string, logId: string): Promise<{
-  detail: InterventionResponse;
+  detail: InterventionSnapshot;
   meta: { week_start: string; week_end: string; created_at: string };
   requestId: string | null;
 }>
 {
   const { data, response } = await apiRequest<{
-    snapshot: InterventionResponse;
+    snapshot: InterventionSnapshot;
     week_start: string;
     week_end: string;
     created_at: string;

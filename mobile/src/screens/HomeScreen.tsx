@@ -142,6 +142,30 @@ export default function HomeScreen() {
     });
   }, [focusList]);
 
+  const quickActions = useMemo(
+    () => [
+      {
+        key: "weekly-plan",
+        label: "Weekly plan",
+        icon: <Calendar color="#1A73E8" size={16} />,
+        onPress: () => navigation.navigate("WeeklyPlan"),
+      },
+      {
+        key: "my-week",
+        label: "My week",
+        icon: <CheckSquare color="#15803D" size={16} />,
+        onPress: () => navigation.navigate("MyWeek"),
+      },
+      {
+        key: "coaching",
+        label: "Coaching",
+        icon: <Shield color="#B45309" size={16} />,
+        onPress: () => navigation.navigate("Interventions"),
+      },
+    ],
+    [navigation],
+  );
+
   const handleRefresh = () => {
     if (!userId) {
       return;
@@ -220,32 +244,31 @@ export default function HomeScreen() {
         >
               <View style={styles.headerRow}>
                 <View>
-                  <Text style={styles.greeting}>{greeting}, Alex</Text>
+                  <Text style={styles.appTitle}>sarthi AI</Text>
                   <Text style={styles.date}>{subtitleDate}</Text>
-                  <View style={styles.coachingRow}>
-                    <TouchableOpacity style={styles.coachingButton} onPress={() => navigation.navigate("WeeklyPlan")}>
-                      <View style={styles.coachingIcon}>
-                        <Calendar size={20} color="#9FE4FF" />
-                      </View>
-                      <Text style={styles.coachingText}>Weekly Plan</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.coachingButton} onPress={() => navigation.navigate("MyWeek")}>
-                      <View style={styles.coachingIcon}>
-                        <CheckSquare size={20} color="#FFD3A4" />
-                      </View>
-                      <Text style={styles.coachingText}>My Week</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.coachingButton} onPress={() => navigation.navigate("Interventions")}>
-                      <View style={styles.coachingIcon}>
-                        <Shield size={20} color="#C2F8C2" />
-                      </View>
-                      <Text style={styles.coachingText}>Coaching</Text>
-                    </TouchableOpacity>
-                  </View>
                 </View>
                 <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate("SettingsPermissions")}>
                   <Settings color="#2D3748" size={24} />
                 </TouchableOpacity>
+              </View>
+
+              <View style={styles.greetingBlock}>
+                <Text style={styles.greeting}>{greeting}, Alex</Text>
+                <Text style={styles.greetingHint}>Stay present. We'll keep the logistics light.</Text>
+              </View>
+
+              <View style={styles.quickActionsRow}>
+                {quickActions.map((action) => (
+                  <TouchableOpacity
+                    key={action.key}
+                    style={styles.quickAction}
+                    onPress={action.onPress}
+                    activeOpacity={0.85}
+                  >
+                    {action.icon}
+                    <Text style={styles.quickActionText}>{action.label}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
           {error ? (
@@ -550,52 +573,48 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 24,
   },
+  appTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 1,
+    color: "#475467",
+    textTransform: "uppercase",
+  },
+  greetingBlock: {
+    marginBottom: 16,
+  },
   greeting: {
-    fontSize: 28,
-    color: "#2D3748",
-    fontFamily: "Georgia",
+    fontSize: 26,
+    color: "#1D2433",
+    fontWeight: "700",
+  },
+  greetingHint: {
+    color: "#64748B",
+    marginTop: 4,
   },
   date: {
     color: "#94A3B8",
     fontSize: 16,
     marginTop: 4,
   },
-  coachingRow: {
+  quickActionsRow: {
     flexDirection: "row",
-    gap: 12,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  coachingButton: {
-    flex: 1,
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
+    flexWrap: "wrap",
     gap: 8,
-    paddingVertical: 18,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    backgroundColor: "#1D2435",
-    borderWidth: 1,
-    borderColor: "#2F3A54",
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
+    marginBottom: 24,
   },
-  coachingIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+  quickAction: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: "#F1F5F9",
   },
-  coachingText: {
+  quickActionText: {
     fontWeight: "600",
-    textAlign: "center",
-    flexShrink: 1,
-    color: "#fff",
+    color: "#1E293B",
   },
   settingsButton: {
     padding: 8,

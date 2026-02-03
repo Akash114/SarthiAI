@@ -1,4 +1,3 @@
---- Page 1 ---
 FlowBuddy: System Requir ements Speciﬁcation (SRS) v2.5 - FINAL
 Version:  2.5 - Agentic Coach with Psychological Safety
 Date:  January 3, 2026
@@ -26,7 +25,7 @@ Table of Contents
 7. Technical Architecture
 8. Data Models
 9. API Speciﬁcations
---- Page 2 ---
+
 10. Observability (Opik Integration)
 11. Success Metrics (Outcomes + Guardrails)
 12. Implementation Plan (4 Weeks)
@@ -51,7 +50,7 @@ Featur e Build Effort If Time Allows
 Daily schedule optimization 1 week Start with manual conﬁrm, add auto later
 Pattern recognition 1 week Start with heuristics (e.g., "90% success on Mon 9 AM")
 P2 (Post-Hackathon):
---- Page 3 ---
+
 ML-based pattern prediction
 Advanced background job scheduling
 Deep Work Shield
@@ -88,7 +87,7 @@ This reduces implementation risk while keeping the agentic thesis strong.
     ┌──────────┴─────┬────────┬────────┐
     ▼                ▼         ▼         ▼
 ┌────────┐       ┌────────┐  ┌────┐  ┌────────┐
---- Page 4 ---
+
 2.2 Agent Responsibilities (Simpliﬁed for  MVP)
 Agent 1: Resolution Decomposer
 Trigger:  User creates new resolution
@@ -114,7 +113,7 @@ Proactive morning check-ins (save for post-demo)
 Demographics:│ OpenAI │       │ Postgres │  │ Opik │  │ APSched │
 │  LLM   │       │  +pgvec │  │     │  │ (weekly) │
 └────────┘       └────────┘  └────┘  └────────┘
---- Page 5 ---
+
 Age: 28-35, knowledge worker
 Resolutions: "Exercise 3x/week", "Read 12 books/year", "Launch side project"
 Pain: Starts strong, loses momentum by Week 3, needs accountability without guilt
@@ -136,7 +135,7 @@ Agent (Autonomous):
 User: Reviews →  Taps "Looks good!"
 Agent: Locks in, sets Sunday reminder for Week 2 planning
 Emotional Arc: Motivated →  Supported →  Confident
---- Page 6 ---
+
 Key Insight:  Brain dump is NOT  for task creation. It's a pressur e release valve  that gives the agent context
 about:
 User's emotional state (overwhelmed, motivated, etc.)
@@ -166,7 +165,7 @@ Wednesday's session for this weekend instead?"
 If Yes: Agent reschedules autonomously
 If No: Agent acknowledges, doesn't push
 Emotional Arc: Stressed →  Heard →  Relieved
---- Page 7 ---
+
 Acceptance Criteria:
  "Brain Dump" button is always visible (home screen sticky button)
  Tapping opens fullscreen text input (auto-focused keyboard)
@@ -202,7 +201,7 @@ Principles:
 - Don't judge ("you should have...")
 - Offer help, don't command
 """
---- Page 8 ---
+
 Example Flow:
 Edge Cases:
 No resolution reference →  Just acknowledge: "Thanks for sharing. I've noted this."
@@ -236,7 +235,7 @@ Agent: "Got it. Sounds like today was packed. You're
        at 1/2 workouts this week. Want me to move 
        Wednesday's to Saturday 10 AM instead?"
        [Yes, reschedule] [No thanks]
---- Page 9 ---
+
  Agent autonomously:
 Classiﬁes type (habit, project, learning)
 Generates 4-12 week milestone plan
@@ -246,7 +245,7 @@ Creates Week 1 speciﬁc tasks (2-5 tasks with suggested times)
  Once accepted, agent sets Sunday reminder for Week 2 planning
 LLM Pr ompt:
 python
---- Page 10 ---
+
 Opik Metrics:
 decomposition_quality (LLM-as-Judge: Are tasks speciﬁc and achievable?)
 user_acceptance_rate (% of generated plans accepted without edits)
@@ -283,7 +282,7 @@ Coaching principles:
 - Tasks must be specific (activity + duration)
 - Respect common work schedules (avoid midday)
 """
---- Page 11 ---
+
 FR-2.1: Automated Weekly Planning
 Priority:  P0 (Core agentic behavior)
 Agentic Level:  High (Fully autonomous)
@@ -305,7 +304,7 @@ Avoids days/times where user consistently missed
  All planning logic logged to Opik
 Agentic Logic:
 python
---- Page 12 ---
+
 @scheduler .scheduled_job ('cron' , day_of_week ='sun', hour=20)
 async  def generate_weekly_plans ():
     users = await  get_users_with_active_resolutions ()
@@ -352,7 +351,7 @@ async  def generate_weekly_plans ():
                 opik .log_feedback (
                     trace_id =trace_id ,
                     metric_name ="weekly_plan_generated" ,
---- Page 13 ---
+
 Permission Model:
 Agent generates plan autonomously
 User receives notiﬁcation (not intrusive - single push)
@@ -384,7 +383,7 @@ Offers 3 clear options:
                         "tasks_planned" : len(next_week_plan .tasks )
                     }
                 )
---- Page 14 ---
+
 Example Intervention:
 Implementation:Push Notification (Thursday 7 PM):
 ───────────────────────────────
@@ -406,7 +405,7 @@ Option 3: Take a Break Week
 - No streak penalty
 What works for you?
 python
---- Page 15 ---
+
 Opik Metrics:
 intervention_effectiveness - % of users who recover (complete ≥tar get after intervention)
 option_selection_distribution - Which options users choose most@scheduler .scheduled_job ('cron' , day_of_week ='thu', hour=19)
@@ -449,7 +448,7 @@ async  def check_for_slippage ():
                             "options_of fered" : len(options )
                         }
                     )
---- Page 16 ---
+
 false_positive_rate - % interventions sent when user would have succeeded anyway
 5. Permission & Autonomy Contr ols
 5.1 Explicit Permission Model
@@ -463,7 +462,7 @@ Push Notiﬁcations ON (with caps) All proactive agent messages
 Quiet Hours 10 PM - 8 AM No notiﬁcations during these hours
 Notiﬁcation Fr equency Cap 3/day max Prevents spam
 Settings UI:
---- Page 17 ---
+
 5.2 Agent Actions Log (T ranspar ency)
 Requir ement:
 Every autonomous action the agent takes is logged in-app with undo option.
@@ -491,7 +490,7 @@ Example Log Entry:┌───────────────────�
 │  └─────────────────────────────┘    │
 │                                     │
 └─────────────────────────────────────┘
---- Page 18 ---
+
 5.3 "Snooze Coach" Mode
 Requir ement:
 User can pause all proactive agent behavior with one tap.
@@ -526,7 +525,7 @@ the agent won't send notifications
 or create plans.
 [Pause] [Cancel]
 python
---- Page 19 ---
+
 6. UX Design Speciﬁcations
 6.1 Home Scr een (Updated with Dual Intake)# When user pauses coaching
 async  def pause_coaching (user_id , duration_days =None ):
@@ -566,7 +565,7 @@ async  def pause_coaching (user_id , duration_days =None ):
 │     [Mark Done]                     │
 │                                     │
 ├─────────────────────────────────────┤
---- Page 20 ---
+
 7-12. [Remaining Sections - Str eamlined]
 Key Updates to Final Sections:
 Section 8 (Data Models):
@@ -588,7 +587,7 @@ autonomy_violation_rate - LLM judge: % of agent messages that command vs of fer 
 undo_action_rate - % of agent actions user undoes (tar get: <5%)
 Target Dashboard:│  [🧠  Brain Dump]  [New Resolution]  │   ←  Dual intake
 └─────────────────────────────────────┘
---- Page 21 ---
+
 12. Implementation Plan (4 Weeks)
 Week 1: Foundation + Dual Intake
  FastAPI backend with Opik SDK
@@ -617,7 +616,7 @@ Guardrail Metrics:
 - Autonomy Violations: 2% ✅  (target: <5%)
 - Action Undos: 4% ✅  (target: <5%)
 Status: Healthy - Agent is helpful, not annoying
---- Page 22 ---
+
  Intervention agent (generates 3 options)
  User response handling (reschedule / adjust / break)
  Opik: slippage_intervention trace

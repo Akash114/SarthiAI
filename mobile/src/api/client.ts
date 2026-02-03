@@ -5,13 +5,13 @@ import { Platform } from "react-native";
 // For physical devices, use your machine's LAN IP address
 const getApiBaseUrl = (): string => {
   if (Platform.OS === "android") {
-    return "https://sarthiai-backend.ctxbt.com";
+    return "http://localhost:8000";
   }
   // iOS simulator and web
-  return "https://sarthiai-backend.ctxbt.com";
+  return "http://localhost:8000";
 };
 
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = getApiBaseUrl().replace(/\/+$/, "");
 
 type ApiOptions = Omit<RequestInit, "body"> & {
   body?: Record<string, unknown>;
@@ -28,7 +28,8 @@ export async function apiRequest<TResponse>(path: string, options: ApiOptions = 
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    const response = await fetch(`${API_BASE_URL}${normalizedPath}`, {
       method: options.method ?? "GET",
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,

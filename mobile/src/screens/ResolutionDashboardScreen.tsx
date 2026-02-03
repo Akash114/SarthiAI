@@ -102,7 +102,10 @@ export default function ResolutionDashboardScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.emptyTitle}>No active resolutions</Text>
-        <Text style={styles.helper}>No active resolutions. Start a new journey from Home.</Text>
+        <Text style={styles.helper}>Create a resolution to start tracking progress and coaching insights.</Text>
+        <TouchableOpacity style={styles.ctaButton} onPress={() => navigation.navigate("ResolutionCreate")}>
+          <Text style={styles.ctaText}>Create Resolution</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -387,6 +390,17 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
     color: "#111",
+  },
+  ctaButton: {
+    marginTop: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 999,
+    backgroundColor: "#1A73E8",
+  },
+  ctaText: {
+    color: "#fff",
+    fontWeight: "600",
   },
   debugCard: {
     padding: 12,
