@@ -1,0 +1,509 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+  import {
+    ActivityIndicator,
+    Alert,
+    Animated,
+    RefreshControl,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    Vibration,
+    View,
+  } from "react-native";
+  import { SafeAreaView } from "react-native-safe-area-context";
+  import { useFocusEffect, useNavigation } from "@react-navigation/native";
+  import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import {
+  Settings,
+  Brain,
+  Target,
+  Calendar,
+  Shield,
+  CheckSquare,
+  Play,
+  Hexagon,
+  Moon,
+  Sun,
+  Zap,
+} from "lucide-react-native";
+
+  import * as dashboardApi from "../api/dashboard";
+  import * as tasksApi from "../api/tasks";
+  import type { TaskItem } from "../api/tasks";
+  import * as journeyApi from "../api/journey";
+  import type { JourneyCategory } from "../api/journey";
+  import { TaskCard } from "../components/TaskCard";
+  import DailyJourneyWidget from "../components/DailyJourneyWidget";
+  import { useUserId } from "../state/user";
+  import type { RootStackParamList } from "../../types/navigation";
+
+  const PRAISE_MESSAGES = ["Great job!", "Keep the flow!", "One step closer!", "Momentum building!", "Small wins matter!", "Nice work!"];
+
+  type HomeNavigation = NativeStackNavigationProp<RootStackParamList, "Home">;
+
+  interface Task {
+    id: string;
+    title: string;
+    is_completed: boolean;
+    scheduled_day: string | null;
+    scheduled_time?: string;
+    duration_min: number | null;
+    source_resolution_title?: string;
+  }
+
+  export default function HomeScreen() {
+    const navigation = useNavigation<HomeNavigation>();
+    const { userId, loading: userLoading } = useUserId();
+
+    const [todayFlow, setTodayFlow] = useState<Task[]>([]);
+    const [journeyCategories, setJourneyCategories] = useState<JourneyCategory[]>([]);
+    const [isDarkMode, setIsDarkMode] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
+    const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [praise, setPraise] = useState<string | null>(null);
+    const [taskTab, setTaskTab] = useState<"remaining" | "completed">("remaining");
+    const praiseOpacity = useRef(new Animated.Value(0)).current;
+
+    const greeting = useMemo(() => getGreeting(new Date()), []);
+    const subtitleDate = useMemo(() => formatSubtitleDate(new Date()), []);
+
+    const fetchData = useCallback(
+      async (options?: { silent?: boolean }) => {
+        if (!userId) return;
+        const silent = options?.silent ?? false;
+        setError(null);
+        if (!silent) setLoading(true);
+
+        try {
+          const journeyPromise = journeyApi.fetchDailyJourney(userId).catch(() => null);
+          const [dashboardResult, taskResult, journeyResult] = await Promise.all([
+            dashboardApi.fetchDashboard(userId),
+            tasksApi.listTasks(userId, { status: "active" }),
+            journeyPromise,
+          ]);
+
+          const resolutionLookup = dashboardResult.dashboard.active_resolutions.reduce<Record<string, string>>((acc, item) => {
+            acc[item.resolution_id] = item.title;
+            return acc;
+          }, {});
+
+          const filteredTasks = filterTasksForToday(taskResult.tasks);
+          const mappedTasks = filteredTasks.map((task) => ({
+            id: task.id,
+            title: task.title,
+            is_completed: task.completed,
+            scheduled_day: task.scheduled_day,
+            scheduled_time: task.scheduled_time ?? undefined,
+            duration_min: task.duration_min,
+            source_resolution_title: task.resolution_id ? resolutionLookup[task.resolution_id] : undefined,
+          }));
+          setTodayFlow(sortFlowTasks(mappedTasks));
+          setJourneyCategories(journeyResult?.categories ?? []);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Unable to refresh your workspace.");
+        } finally {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      },
+      [userId],
+    );
+
+    useEffect(() => {
+      if (!userLoading && userId) fetchData();
+    }, [fetchData, userLoading, userId]);
+
+    useFocusEffect(
+      useCallback(() => {
+        if (!userLoading && userId) fetchData({ silent: true });
+      }, [fetchData, userLoading, userId]),
+    );
+
+    const remainingTasks = useMemo(() => sortFlowTasks(todayFlow.filter((task) => !task.is_completed)), [todayFlow]);
+    const completedTasks = useMemo(() => sortFlowTasks(todayFlow.filter((task) => task.is_completed)), [todayFlow]);
+    const upNextTask = useMemo(() => remainingTasks[0] ?? null, [remainingTasks]);
+    const remainingAfterHero = useMemo(
+      () => (upNextTask ? remainingTasks.filter((task) => task.id !== upNextTask.id) : remainingTasks),
+      [remainingTasks, upNextTask],
+    );
+    const visibleTasks = useMemo(
+      () => (taskTab === "remaining" ? remainingAfterHero : completedTasks),
+      [taskTab, remainingAfterHero, completedTasks],
+    );
+    const allDone = todayFlow.length > 0 && remainingTasks.length === 0;
+
+    const handleRefresh = () => {
+      if (!userId) return;
+      setRefreshing(true);
+      fetchData({ silent: true });
+    };
+
+    const handleToggleTask = async (taskId: string, isCompleted: boolean) => {
+      if (!userId) return;
+      setUpdatingTaskId(taskId);
+      setTodayFlow((prev) => prev.map((task) => (task.id === taskId ? { ...task, is_completed: isCompleted } : task)));
+      try {
+        await tasksApi.updateTaskCompletion(taskId, userId, isCompleted);
+        if (isCompleted) {
+          Vibration.vibrate(10);
+          const message = PRAISE_MESSAGES[Math.floor(Math.random() * PRAISE_MESSAGES.length)];
+          setPraise(message);
+          Animated.timing(praiseOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start(() => {
+            setTimeout(() => {
+              Animated.timing(praiseOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => setPraise(null));
+            }, 2000);
+          });
+        }
+      } catch (err) {
+        setTodayFlow((prev) => prev.map((task) => (task.id === taskId ? { ...task, is_completed: !isCompleted } : task)));
+        setError(err instanceof Error ? err.message : "Unable to update task right now.");
+      } finally {
+        setUpdatingTaskId(null);
+      }
+    };
+
+    const handleDeleteTask = useCallback(
+      async (taskId: string) => {
+        if (!userId) return;
+        setDeletingTaskId(taskId);
+        try {
+          await tasksApi.deleteTask(taskId, userId);
+          setTodayFlow((prev) => prev.filter((task) => task.id !== taskId));
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Unable to delete that task right now.");
+        } finally {
+          setDeletingTaskId(null);
+        }
+      },
+      [userId],
+    );
+
+    const confirmDeleteTask = useCallback(
+      (taskId: string) => {
+        if (deletingTaskId) return;
+        const target = todayFlow.find((task) => task.id === taskId);
+        Alert.alert("Delete task?", `Delete "${target?.title ?? "this task"}" from your flow?`, [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete", style: "destructive", onPress: () => handleDeleteTask(taskId) },
+        ]);
+      },
+      [todayFlow, deletingTaskId, handleDeleteTask],
+    );
+
+    const toggleTheme = () => setIsDarkMode((prev) => !prev);
+
+    const backgroundClass = isDarkMode ? "bg-slate-900" : "bg-slate-50";
+    const textPrimary = isDarkMode ? "text-white" : "text-slate-900";
+    const textSecondary = isDarkMode ? "text-slate-300" : "text-slate-500";
+    const cardBackground = isDarkMode ? "bg-slate-800" : "bg-white";
+    const chipBackground = isDarkMode ? "bg-indigo-400/20" : "bg-indigo-50/80";
+    const chipText = isDarkMode ? "text-indigo-100" : "text-indigo-700";
+
+    return (
+      <SafeAreaView className={`flex-1 ${backgroundClass}`}>
+        <View className="flex-1">
+          <ScrollView
+            contentContainerStyle={{ paddingBottom: 140 }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#94A3B8" />}
+            showsVerticalScrollIndicator={false}
+            className="px-5 pt-6"
+          >
+            {/* Premium Header */}
+            <View className="flex-row items-center justify-between mb-6">
+              <View className="flex-row items-center space-x-3">
+                <View className={`rounded-2xl p-2 ${isDarkMode ? "bg-indigo-500/20" : "bg-indigo-100"}`}>
+                  <Hexagon size={22} color={isDarkMode ? "#C7D2FE" : "#4F46E5"} />
+                </View>
+                <View>
+                  <Text className={`text-2xl font-bold tracking-tight ${textPrimary}`}>Sarathi</Text>
+                  <Text className={`text-xs ${textSecondary}`}>Supportive Autonomy</Text>
+                </View>
+              </View>
+              <View className="flex-row items-center space-x-3">
+                <TouchableOpacity
+                  className={`rounded-full p-3 ${isDarkMode ? "bg-white/10" : "bg-slate-100"}`}
+                  onPress={toggleTheme}
+                  activeOpacity={0.85}
+                >
+                  {isDarkMode ? <Sun size={20} color="#FDE68A" /> : <Moon size={20} color="#4F46E5" />}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  className={`rounded-full p-3 ${isDarkMode ? "bg-white/10" : "bg-slate-100"}`}
+                  onPress={() => navigation.navigate("SettingsPermissions")}
+                  activeOpacity={0.85}
+                >
+                  <Settings size={20} color={isDarkMode ? "#E2E8F0" : "#1F2937"} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View className="mb-6">
+              <Text className={`text-3xl font-semibold ${textPrimary}`}>{greeting}, Alex</Text>
+              <Text className={`mt-1 ${textSecondary}`}>{subtitleDate}</Text>
+            </View>
+
+            {/* Quick Actions */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-6" contentContainerStyle={{ gap: 12 }}>
+              {quickActions.map((action) => (
+                <TouchableOpacity
+                  key={action.key}
+                  onPress={action.onPress}
+                  activeOpacity={0.85}
+                  className={`flex-row items-center rounded-2xl px-4 py-3 shadow-sm ${
+                    isDarkMode ? "shadow-black/25" : "shadow-slate-300/60"
+                  } ${chipBackground}`}
+                >
+                  {action.icon}
+                  <Text className={`ml-2 font-semibold ${chipText}`}>{action.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* Daily Momentum */}
+            <View className="mb-6">
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-row items-center space-x-2">
+                  <Zap size={16} color={isDarkMode ? "#FACC15" : "#F97316"} />
+                  <Text className={`text-lg font-semibold ${textPrimary}`}>Daily Momentum</Text>
+                </View>
+                <TouchableOpacity onPress={() => navigation.navigate("Dashboard")}>
+                  <Text className={`text-sm font-semibold ${isDarkMode ? "text-indigo-200" : "text-indigo-600"}`}>Dashboard</Text>
+                </TouchableOpacity>
+              </View>
+              <DailyJourneyWidget categories={journeyCategories} />
+            </View>
+
+            {/* Hero Card */}
+            <HeroCard task={upNextTask} onPress={() => navigation.navigate("MyWeek")} isDarkMode={isDarkMode} cardBackground={cardBackground} />
+
+            {error ? <Text className={`mb-3 text-sm ${isDarkMode ? "text-rose-200" : "text-rose-600"}`}>{error}</Text> : null}
+
+            {loading && !refreshing ? (
+              <View className="py-12">
+                <ActivityIndicator color={isDarkMode ? "#E2E8F0" : "#6B8DBF"} />
+              </View>
+            ) : (
+              <>
+                <View className="flex-row justify-between items-center mb-3">
+                  <Text className={`text-lg font-semibold ${textPrimary}`}>Today&apos;s Flow</Text>
+                </View>
+
+                <View>
+                  <View className="flex-row gap-3 mb-4">
+                    <TouchableOpacity
+                      className={`flex-1 rounded-full border px-4 py-2 ${
+                        taskTab === "remaining" ? "bg-indigo-600 border-indigo-600" : "border-slate-300"
+                      }`}
+                      onPress={() => setTaskTab("remaining")}
+                    >
+                      <Text
+                        className={`text-center font-semibold ${
+                          taskTab === "remaining" ? "text-white" : isDarkMode ? "text-slate-100" : "text-slate-600"
+                        }`}
+                      >
+                        Remaining ({remainingAfterHero.length})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className={`flex-1 rounded-full border px-4 py-2 ${
+                        taskTab === "completed" ? "bg-indigo-600 border-indigo-600" : "border-slate-300"
+                      }`}
+                      onPress={() => setTaskTab("completed")}
+                    >
+                      <Text
+                        className={`text-center font-semibold ${
+                          taskTab === "completed" ? "text-white" : isDarkMode ? "text-slate-100" : "text-slate-600"
+                        }`}
+                      >
+                        Completed ({completedTasks.length})
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {visibleTasks.length ? (
+                    visibleTasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={{
+                          id: task.id,
+                          title: task.title,
+                          completed: task.is_completed,
+                          scheduled_day: task.scheduled_day,
+                          scheduled_time: task.scheduled_time ?? null,
+                          duration_min: task.duration_min,
+                          resolution_title: task.source_resolution_title ?? "",
+                          resolution_id: "",
+                        }}
+                        onToggleComplete={(value) => handleToggleTask(task.id, value)}
+                        onDelete={() => confirmDeleteTask(task.id)}
+                        isUpdating={updatingTaskId === task.id}
+                        isDeleting={deletingTaskId === task.id}
+                      />
+                    ))
+                  ) : (
+                    <View className={`rounded-3xl ${cardBackground} p-6 shadow-sm`}>
+                      <Text className={`text-lg font-semibold mb-2 ${textPrimary}`}>
+                        {taskTab === "remaining" ? "No remaining tasks." : "No tasks completed yet."}
+                      </Text>
+                      <Text className={`text-sm ${textSecondary}`}>
+                        {taskTab === "remaining"
+                          ? "Your list is clear — feel free to add new momentum or take a break."
+                          : "Check items off above and they’ll land in this list."}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </>
+            )}
+
+            {praise ? (
+              <Animated.View
+                style={[
+                  {
+                    opacity: praiseOpacity,
+                    transform: [{ translateY: praiseOpacity.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
+                  },
+                  { position: "absolute", bottom: 100, alignSelf: "center" },
+                ]}
+              >
+                <Text className="px-6 py-3 rounded-full bg-slate-900 text-white font-semibold">{praise}</Text>
+              </Animated.View>
+            ) : null}
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  type HeroCardInnerProps = {
+    task: Task | null;
+    onPress: () => void;
+    isDarkMode: boolean;
+    cardBackground: string;
+  };
+
+  function HeroCard({ task, onPress, isDarkMode, cardBackground }: HeroCardInnerProps) {
+    const title = task ? task.title : "Rest up, you're done for the day!";
+    const subtitle = task ? formatTaskSchedule(task) : "We'll reset your priorities tomorrow.";
+    const buttonLabel = task ? "Enter Focus Mode" : "Review My Week";
+    const cardClass = task ? "bg-gradient-to-r from-indigo-600 to-indigo-800" : "bg-gradient-to-r from-emerald-600 to-emerald-800";
+
+    return (
+      <View className={`rounded-3xl p-6 mb-8 ${cardClass}`}>
+        <Text className="text-xs tracking-[2px] text-indigo-200 uppercase mb-2">Up Next</Text>
+        <Text className="text-white text-2xl font-semibold">{title}</Text>
+        <Text className="text-indigo-100 mt-2">{subtitle}</Text>
+        <TouchableOpacity
+          onPress={onPress}
+          className="mt-5 rounded-full bg-white flex-row items-center justify-center py-3"
+          activeOpacity={0.9}
+        >
+          <Play size={18} color="#1E3A8A" className="mr-2" />
+          <Text className="text-indigo-900 font-semibold">{buttonLabel}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  function getGreeting(date: Date): string {
+    const hour = date.getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
+  }
+
+  function formatSubtitleDate(date: Date): string {
+    return new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(date);
+  }
+
+  function formatTaskSchedule(task: Task): string {
+    const todayKey = getLocalDateKey(new Date());
+    const dayLabel =
+      task.scheduled_day && task.scheduled_day !== todayKey
+        ? new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(new Date(task.scheduled_day))
+        : "Today";
+    const timeLabel = formatTaskTime(task.scheduled_time);
+    return `${dayLabel} · ${timeLabel}`;
+  }
+
+  function formatTaskTime(value?: string | null): string {
+    if (!value) return "Anytime";
+    const parts = value.split(":");
+    if (parts.length >= 2) {
+      const hour = Number(parts[0]);
+      const minute = Number(parts[1]);
+      if (Number.isFinite(hour) && Number.isFinite(minute)) {
+        const date = new Date();
+        date.setHours(hour, minute, 0, 0);
+        return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+      }
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime())
+      ? "Anytime"
+      : new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(parsed);
+  }
+
+  function filterTasksForToday(tasks: TaskItem[]): TaskItem[] {
+    const todayKey = getLocalDateKey(new Date());
+    return tasks.filter((task) => !task.scheduled_day || task.scheduled_day === todayKey);
+  }
+
+  function getLocalDateKey(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+function sortFlowTasks(tasks: Task[]): Task[] {
+    const getDateValue = (value?: string) => {
+      if (!value) return null;
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) return parsed.getTime();
+      const [hourStr, minuteStr] = value.split(":");
+      const hour = Number(hourStr);
+      const minute = Number(minuteStr);
+      if (Number.isFinite(hour) && Number.isFinite(minute)) {
+        const fallback = new Date();
+        fallback.setHours(hour, minute, 0, 0);
+        return fallback.getTime();
+}
+
+function quickActions(navigation: HomeNavigation) {
+  return [
+    {
+      key: "weekly-plan",
+      label: "Weekly plan",
+      icon: <Calendar color="#4338CA" size={16} />,
+      onPress: () => navigation.navigate("WeeklyPlan"),
+    },
+    {
+      key: "my-week",
+      label: "My week",
+      icon: <CheckSquare color="#15803D" size={16} />,
+      onPress: () => navigation.navigate("MyWeek"),
+    },
+    {
+      key: "coaching",
+      label: "Coaching",
+      icon: <Shield color="#B45309" size={16} />,
+      onPress: () => navigation.navigate("Interventions"),
+    },
+  ];
+}
+      return null;
+    };
+
+    return [...tasks].sort((a, b) => {
+      const aValue = getDateValue(a.scheduled_time);
+      const bValue = getDateValue(b.scheduled_time);
+      if (aValue !== null && bValue !== null) return aValue - bValue;
+      if (aValue !== null) return -1;
+      if (bValue !== null) return 1;
+      return a.title.localeCompare(b.title);
+    });
+  }

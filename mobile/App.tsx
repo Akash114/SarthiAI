@@ -1,7 +1,8 @@
 import "react-native-get-random-values";
 import "react-native-gesture-handler";
 import { AppRegistry } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { useMemo } from "react";
+import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import HomeScreen from "./src/screens/HomeScreen";
@@ -23,14 +24,32 @@ import InterventionsHistoryScreen from "./src/screens/InterventionsHistoryScreen
 import InterventionsHistoryDetailScreen from "./src/screens/InterventionsHistoryDetailScreen";
 import TaskEditScreen from "./src/screens/TaskEditScreen";
 import TaskCreateScreen from "./src/screens/TaskCreateScreen";
+import FocusModeScreen from "./src/screens/FocusModeScreen";
+import { ThemeProvider, useTheme } from "./src/theme";
 import type { RootStackParamList } from "./types/navigation";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-function App() {
+function Navigator() {
+  const { theme, isDark } = useTheme();
+  const navigationTheme = useMemo(
+    () => ({
+      ...(isDark ? DarkTheme : DefaultTheme),
+      colors: {
+        ...(isDark ? DarkTheme.colors : DefaultTheme.colors),
+        background: theme.background,
+        card: theme.surface,
+        text: theme.textPrimary,
+        border: theme.border,
+        primary: theme.accent,
+      },
+    }),
+    [isDark, theme],
+  );
+
   return (
-    <NavigationContainer>
-      <StatusBar style="dark" />
+    <NavigationContainer theme={navigationTheme}>
+      <StatusBar style={isDark ? "light" : "dark"} />
       <Stack.Navigator>
         <Stack.Screen name="Home" component={HomeScreen} options={{ title: "Sarthi AI" }} />
         <Stack.Screen name="BrainDump" component={BrainDumpScreen} options={{ title: "Brain Dump" }} />
@@ -83,8 +102,21 @@ function App() {
         />
         <Stack.Screen name="TaskCreate" component={TaskCreateScreen} options={{ title: "New Task" }} />
         <Stack.Screen name="TaskEdit" component={TaskEditScreen} options={{ title: "Edit Task" }} />
+        <Stack.Screen
+          name="FocusMode"
+          component={FocusModeScreen}
+          options={{ headerShown: false, presentation: "modal" }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <Navigator />
+    </ThemeProvider>
   );
 }
 

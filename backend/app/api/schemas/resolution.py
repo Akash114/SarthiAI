@@ -31,6 +31,7 @@ class ResolutionResponse(BaseModel):
     title: str
     raw_text: str
     type: Literal["habit", "project", "learning", "health", "finance", "other"]
+    category: str
     duration_weeks: Optional[int]
     status: Literal["draft"]
     request_id: str
@@ -40,6 +41,7 @@ class ResolutionSummary(BaseModel):
     id: UUID
     title: str
     type: str
+    category: Optional[str]
     status: str
     duration_weeks: Optional[int]
     updated_at: datetime
@@ -50,6 +52,7 @@ class ResolutionDetailResponse(BaseModel):
     user_id: UUID
     title: str
     type: str
+    category: Optional[str]
     status: str
     duration_weeks: Optional[int]
     plan: Optional[PlanPayload] = None

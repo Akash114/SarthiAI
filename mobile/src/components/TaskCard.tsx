@@ -5,6 +5,7 @@ import { hasCalendarPermissions, isTaskSynced, requestCalendarPermissions, syncT
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import { useNotifications } from "../hooks/useNotifications";
 import { useUserId } from "../state/user";
+import { useTheme } from "../theme";
 
 export type TaskCardTask = {
   id: string;
@@ -41,6 +42,7 @@ export function TaskCard({
   const [reminderScheduled, setReminderScheduled] = useState(false);
   const { registerForPushNotificationsAsync, scheduleTaskReminder } = useNotifications();
   const { userId } = useUserId();
+  const { theme } = useTheme();
 
   useEffect(() => {
     let mounted = true;
@@ -145,43 +147,83 @@ export function TaskCard({
   const scheduleLabel = formatScheduleLabel(task.scheduled_day, task.scheduled_time);
 
   return (
-    <View style={[styles.card, task.completed && styles.cardCompleted]}>
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme.card,
+          borderColor: theme.border,
+          shadowColor: theme.shadow,
+        },
+        task.completed && styles.cardCompleted,
+      ]}
+    >
       <View style={styles.row}>
         <TouchableOpacity
-          style={[styles.checkbox, task.completed && styles.checkboxChecked]}
+          style={[
+            styles.checkbox,
+            {
+              borderColor: task.completed ? theme.accent : theme.border,
+              backgroundColor: task.completed ? theme.accent : "transparent",
+            },
+          ]}
           onPress={handleToggle}
           disabled={!onToggle}
         >
           {task.completed ? <Check size={14} color="#fff" strokeWidth={3} /> : null}
         </TouchableOpacity>
         <TouchableOpacity style={styles.body} onPress={onPress} activeOpacity={onPress ? 0.8 : 1}>
-          <Text style={[styles.title, task.completed && styles.titleCompleted]}>{task.title}</Text>
-          <Text style={styles.metaText}>{scheduleLabel || "Unscheduled"}</Text>
+          <Text
+            style={[
+              styles.title,
+              { color: theme.textPrimary },
+              task.completed && { color: theme.textMuted, textDecorationLine: "line-through" },
+            ]}
+          >
+            {task.title}
+          </Text>
+          <Text style={[styles.metaText, { color: theme.textSecondary }]}>{scheduleLabel || "Unscheduled"}</Text>
           {badgeLabel ? (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{badgeLabel}</Text>
+            <View style={[styles.badge, { backgroundColor: theme.accentSoft }]}>
+              <Text style={[styles.badgeText, { color: theme.accentText }]}>{badgeLabel}</Text>
             </View>
           ) : null}
         </TouchableOpacity>
         {(!task.completed || onDelete) ? (
           <View style={styles.actions}>
             {!task.completed && !alreadySynced ? (
-              <TouchableOpacity style={styles.syncButton} onPress={handleSync} disabled={syncing}>
-                <CalendarIcon size={20} color="#2563EB" />
+              <TouchableOpacity
+                style={[
+                  styles.syncButton,
+                  { borderColor: theme.accent, backgroundColor: theme.accentSoft },
+                ]}
+                onPress={handleSync}
+                disabled={syncing}
+              >
+                <CalendarIcon size={20} color={theme.accent} />
               </TouchableOpacity>
             ) : null}
             {!task.completed && !reminderScheduled ? (
-              <TouchableOpacity style={styles.reminderButton} onPress={handleReminder}>
-                <Bell size={18} color="#FB923C" />
+              <TouchableOpacity
+                style={[
+                  styles.reminderButton,
+                  { borderColor: theme.warning, backgroundColor: theme.accentSoft },
+                ]}
+                onPress={handleReminder}
+              >
+                <Bell size={18} color={theme.warning} />
               </TouchableOpacity>
             ) : null}
             {onDelete ? (
               <TouchableOpacity
-                style={styles.deleteButton}
+                style={[
+                  styles.deleteButton,
+                  { borderColor: theme.danger, backgroundColor: theme.accentSoft },
+                ]}
                 onPress={() => onDelete(task.id)}
                 disabled={deleteDisabled}
               >
-                <Trash2 size={18} color="#DC2626" />
+                <Trash2 size={18} color={theme.danger} />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -196,12 +238,11 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 18,
     padding: 16,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     marginBottom: 12,
+    borderWidth: 1,
   },
   cardCompleted: {
     opacity: 0.7,
@@ -215,14 +256,9 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     borderWidth: 2,
-    borderColor: "#CBD5E0",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
-  },
-  checkboxChecked: {
-    backgroundColor: "#2563EB",
-    borderColor: "#2563EB",
   },
   body: {
     flex: 1,
@@ -230,15 +266,9 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#111827",
-  },
-  titleCompleted: {
-    textDecorationLine: "line-through",
-    color: "#6B7280",
   },
   metaText: {
     marginTop: 4,
-    color: "#6B7280",
   },
   badge: {
     marginTop: 6,
@@ -246,10 +276,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: "#E0E7FF",
   },
   badgeText: {
-    color: "#1E3A8A",
     fontWeight: "600",
     fontSize: 12,
   },
@@ -258,10 +286,8 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#BFDBFE",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EFF6FF",
     marginLeft: 12,
   },
   reminderButton: {
@@ -269,10 +295,8 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#FCD34D",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFF7ED",
     marginLeft: 8,
   },
   deleteButton: {
@@ -280,10 +304,8 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#FCA5A5",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FEF2F2",
     marginLeft: 8,
   },
   actions: {

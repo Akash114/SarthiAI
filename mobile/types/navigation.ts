@@ -27,4 +27,9 @@ export type RootStackParamList = {
     taskId: string;
   };
   TaskCreate: undefined;
+  FocusMode: {
+    taskTitle: string;
+    durationMinutes: number;
+    taskId?: string;
+  };
 };

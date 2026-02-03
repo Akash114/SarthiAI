@@ -1,34 +1,53 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
   Modal,
-  SectionList,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from "react-native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
+import { ArrowLeft, Calendar, Target } from "lucide-react-native";
 import type { RootStackParamList } from "../../types/navigation";
 import { TaskItem, updateTaskCompletion, updateTaskNote, deleteTask } from "../api/tasks";
 import { TaskCard } from "../components/TaskCard";
 import { useUserId } from "../state/user";
 import { useTasks } from "../hooks/useTasks";
-import { formatScheduleLabel, sortTasksBySchedule } from "../utils/datetime";
+import { sortTasksBySchedule, getLocalDateKey } from "../utils/datetime";
+import * as dashboardApi from "../api/dashboard";
+import type { DashboardResolution } from "../api/dashboard";
+import { useTheme } from "../theme";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "MyWeek">;
 
 type TaskSection = {
   title: string;
   data: TaskItem[];
+  key: string;
+  isToday?: boolean;
+  dateKey?: string;
+};
+
+type WeeklyFocusItem = {
+  id: string;
+  title: string;
+  completedTasks: number;
+  totalTasks: number;
+  progressPercentage: number;
+  weekRange: string;
 };
 
 export default function MyWeekScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { userId, loading: userLoading } = useUserId();
+  const { theme, isDark } = useTheme();
   const {
     tasks,
     loading,
@@ -46,6 +65,17 @@ export default function MyWeekScreen() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [weeklyFocus, setWeeklyFocus] = useState<WeeklyFocusItem[]>([]);
+  const [focusLoading, setFocusLoading] = useState(false);
+  const [focusError, setFocusError] = useState<string | null>(null);
+  const backgroundColor = theme.background;
+  const surface = theme.card;
+  const surfaceMuted = theme.surfaceMuted;
+  const textPrimary = theme.textPrimary;
+  const textSecondary = theme.textSecondary;
+  const borderColor = theme.border;
+  const accentColor = theme.accent;
+  const dangerColor = theme.danger;
 
   const dayFormatter = useMemo(
     () =>
@@ -57,19 +87,61 @@ export default function MyWeekScreen() {
     [],
   );
 
+  const focusFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+      }),
+    [],
+  );
+
+  const fetchWeeklyFocus = useCallback(async () => {
+    if (!userId) return;
+    setFocusLoading(true);
+    setFocusError(null);
+    try {
+      const { dashboard } = await dashboardApi.fetchDashboard(userId);
+      const mapped = dashboard.active_resolutions.map((resolution: DashboardResolution) => ({
+        id: resolution.resolution_id,
+        title: resolution.title,
+        completedTasks: resolution.tasks.completed,
+        totalTasks: resolution.tasks.total,
+        progressPercentage: Math.round((resolution.completion_rate || 0) * 100),
+        weekRange: formatWeekRange(resolution.week.start, resolution.week.end, focusFormatter),
+      }));
+      setWeeklyFocus(mapped);
+    } catch (err) {
+      setFocusError(err instanceof Error ? err.message : "Unable to load weekly focus.");
+    } finally {
+      setFocusLoading(false);
+    }
+  }, [userId, focusFormatter]);
+
+  useEffect(() => {
+    if (!userId || userLoading) return;
+    fetchWeeklyFocus();
+  }, [fetchWeeklyFocus, userId, userLoading]);
+
   const grouped = useMemo<TaskSection[]>(() => {
-    const buckets = new Map<string, { title: string; data: TaskItem[]; dateValue: number }>();
+    const buckets = new Map<string, { title: string; data: TaskItem[]; dateValue: number; dateKey: string }>();
     const unscheduled: TaskItem[] = [];
+    const todayKey = getLocalDateKey(new Date());
 
     tasks.forEach((task) => {
       if (task.scheduled_day) {
         const dateObj = new Date(task.scheduled_day);
         if (!Number.isNaN(dateObj.getTime())) {
-          const key = dateObj.toISOString().slice(0, 10);
-          if (!buckets.has(key)) {
-            buckets.set(key, { title: dayFormatter.format(dateObj), data: [], dateValue: dateObj.getTime() });
+          const normalized = getLocalDateKey(dateObj);
+          if (!buckets.has(normalized)) {
+            buckets.set(normalized, {
+              title: dayFormatter.format(dateObj),
+              data: [],
+              dateValue: dateObj.getTime(),
+              dateKey: normalized,
+            });
           }
-          buckets.get(key)!.data.push(task);
+          buckets.get(normalized)!.data.push(task);
           return;
         }
       }
@@ -81,16 +153,21 @@ export default function MyWeekScreen() {
       .map((section) => ({
         title: section.title,
         data: sortTasksBySchedule(section.data),
+        key: section.dateKey,
+        dateKey: section.dateKey,
+        isToday: section.dateKey === todayKey,
       }));
 
     if (unscheduled.length) {
-      sections.push({ title: "Unscheduled", data: unscheduled });
+      sections.push({ title: "Unscheduled", data: unscheduled, key: "unscheduled" });
     }
     return sections;
   }, [tasks, dayFormatter]);
 
-  const renderItem = ({ item }: { item: TaskItem }) => (
+  const hasTasks = grouped.some((section) => section.data.length > 0);
+  const renderTask = (item: TaskItem) => (
     <TaskCard
+      key={item.id}
       task={{
         id: item.id,
         title: item.title,
@@ -105,16 +182,16 @@ export default function MyWeekScreen() {
       deleteDisabled={deletingId === item.id}
       footer={
         <View>
-          {item.note ? <Text style={styles.noteText}>{item.note}</Text> : null}
+          {item.note ? <Text style={[styles.noteText, { color: textSecondary }]}>{item.note}</Text> : null}
           <View style={styles.footerRow}>
             <TouchableOpacity
-              style={styles.editChip}
+              style={[styles.editChip, { backgroundColor: theme.accentSoft }]}
               onPress={() => navigation.navigate("TaskEdit", { taskId: item.id })}
             >
-              <Text style={styles.editChipText}>Edit</Text>
+              <Text style={[styles.editChipText, { color: theme.accentText }]}>Edit</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.noteButton} onPress={() => openNoteModal(item)} disabled={noteSaving}>
-              <Text style={styles.noteButtonText}>{item.note ? "Edit note" : "Add note"}</Text>
+              <Text style={[styles.noteButtonText, { color: accentColor }]}>{item.note ? "Edit note" : "Add note"}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -222,152 +299,239 @@ export default function MyWeekScreen() {
     }
   };
 
+  const handleRefresh = useCallback(async () => {
+    if (!userId) return;
+    setRefreshing(true);
+    try {
+      await Promise.all([refetch(), fetchWeeklyFocus()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchWeeklyFocus, refetch, userId]);
+
   if (userLoading || (loading && !refreshing && !tasks.length)) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.helper}>Gathering your week…</Text>
+      <View style={[styles.center, { backgroundColor }]}>
+        <ActivityIndicator color={accentColor} />
+        <Text style={[styles.helper, { color: textSecondary }]}>Gathering your week…</Text>
       </View>
     );
   }
 
-  const combinedError = actionError || tasksError;
-
-  if (combinedError) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{combinedError}</Text>
-        <TouchableOpacity
-          style={styles.retry}
-          onPress={() => {
-            setRefreshing(true);
-            refetch().finally(() => setRefreshing(false));
-          }}
-        >
-          <Text style={styles.retryText}>Try again</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (!tasks.length) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.emptyTitle}>No active tasks yet</Text>
-        <Text style={styles.helper}>Approve a plan to fill your week with gentle supports.</Text>
-        <TouchableOpacity style={styles.retry} onPress={() => navigation.navigate("ResolutionCreate")}>
-          <Text style={styles.retryText}>Create a resolution</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      <SectionList
-        sections={grouped}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        renderSectionHeader={({ section }) => <Text style={styles.sectionHeader}>{section.title}</Text>}
-        refreshing={refreshing}
-        onRefresh={() => {
-          setRefreshing(true);
-          refetch().finally(() => setRefreshing(false));
-        }}
-        contentContainerStyle={styles.listContent}
-      />
-
-      {(listRequestId || noteRequestId) ? (
-        <View style={styles.debugCard}>
-          {listRequestId ? <Text style={styles.debugValue}>list_request_id: {listRequestId}</Text> : null}
-          {noteRequestId ? <Text style={styles.debugValue}>note_request_id: {noteRequestId}</Text> : null}
-        </View>
-      ) : null}
-
-      <Modal visible={!!noteTask} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{noteTask?.note ? "Edit note" : "Add note"}</Text>
-            <TextInput
-              style={styles.noteInput}
-              multiline
-              placeholder="Add a gentle reflection"
-              value={noteText}
-              onChangeText={setNoteText}
-              editable={!noteSaving}
-              maxLength={500}
-            />
-            <Text style={styles.noteCounter}>{trimmedNote.length}/500</Text>
-            {noteError ? <Text style={styles.error}>{noteError}</Text> : null}
-            <View style={styles.modalActions}>
-              {noteTask?.note ? (
-                <TouchableOpacity onPress={handleClearNote} disabled={noteSaving}>
-                  <Text style={styles.clearText}>Clear note</Text>
-                </TouchableOpacity>
-              ) : (
-                <View />
-              )}
-              <View style={styles.modalButtons}>
-                <TouchableOpacity style={styles.modalButton} onPress={closeNoteModal} disabled={noteSaving}>
-                  <Text style={styles.secondaryText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.primary, saveDisabled && styles.buttonDisabled]}
-                  onPress={handleSaveNote}
-                  disabled={saveDisabled}
-                >
-                  {noteSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save</Text>}
-                </TouchableOpacity>
-              </View>
+  const renderNoteModal = () => (
+    <Modal visible={!!noteTask} animationType="slide" transparent>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalCard, { backgroundColor: surface }]}>
+          <Text style={[styles.modalTitle, { color: textPrimary }]}>
+            {noteTask?.note ? "Edit note" : "Add note"}
+          </Text>
+          <TextInput
+            style={[
+              styles.noteInput,
+              {
+                borderColor,
+                color: textPrimary,
+              },
+            ]}
+            placeholder="Add a gentle reflection"
+            placeholderTextColor={textSecondary}
+            multiline
+            value={noteText}
+            onChangeText={setNoteText}
+            editable={!noteSaving}
+            maxLength={500}
+          />
+          <Text style={[styles.noteCounter, { color: textSecondary }]}>{trimmedNote.length}/500</Text>
+          {noteError ? <Text style={[styles.errorText, { color: dangerColor }]}>{noteError}</Text> : null}
+          <View style={styles.modalActions}>
+            {noteTask?.note ? (
+              <TouchableOpacity onPress={handleClearNote} disabled={noteSaving}>
+                <Text style={styles.clearText}>Clear note</Text>
+              </TouchableOpacity>
+            ) : (
+              <View />
+            )}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalButton} onPress={closeNoteModal} disabled={noteSaving}>
+                <Text style={styles.secondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.primary, saveDisabled && styles.buttonDisabled]}
+                onPress={handleSaveNote}
+                disabled={saveDisabled}
+              >
+                {noteSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save</Text>}
+              </TouchableOpacity>
             </View>
           </View>
         </View>
-      </Modal>
+      </View>
+    </Modal>
+  );
+
+  const combinedError = actionError || tasksError;
+
+  return (
+    <View style={[styles.container, { backgroundColor }]}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#94A3B8" />}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={[styles.backButton, { borderColor, backgroundColor: surface }]}
+            onPress={() => navigation.goBack()}
+          >
+            <ArrowLeft size={18} color={textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.screenTitle, { color: textPrimary }]}>My Week</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <View style={styles.sectionHeading}>
+          <Text style={[styles.sectionTitle, { color: textPrimary }]}>This Week&apos;s Focus</Text>
+          <Text style={[styles.sectionSubtitle, { color: textSecondary }]}>
+            Step back and review your active resolutions.
+          </Text>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.focusScroll}>
+          {focusLoading ? (
+            <View style={[styles.focusLoading, { backgroundColor: theme.accentSoft }]}>
+              <ActivityIndicator color={accentColor} />
+              <Text style={[styles.focusLoadingText, { color: textSecondary }]}>Loading progress…</Text>
+            </View>
+          ) : weeklyFocus.length ? (
+            weeklyFocus.map((focus) => (
+              <View
+                key={focus.id}
+                style={[
+                  styles.focusCard,
+                  {
+                    backgroundColor: surface,
+                    borderColor,
+                    shadowColor: theme.shadow,
+                  },
+                ]}
+              >
+               <View style={styles.focusTitleRow}>
+                 <Target size={18} color="#818CF8" />
+                  <Text style={[styles.focusCardTitle, { color: textPrimary }]} numberOfLines={1}>
+                    {focus.title}
+                 </Text>
+               </View>
+               <Text style={[styles.focusFraction, { color: textSecondary }]}>
+                 {focus.completedTasks}/{focus.totalTasks || 0} done
+                </Text>
+                <View style={[styles.progressTrack, { backgroundColor: borderColor }]}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${Math.min(100, focus.progressPercentage)}%`,
+                        backgroundColor: "#6366F1",
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.focusRange, { color: textSecondary }]}>{focus.weekRange}</Text>
+              </View>
+            ))
+          ) : (
+            <View
+              style={[
+                styles.focusCard,
+                {
+                  backgroundColor: surface,
+                  borderColor,
+                  shadowColor: theme.shadow,
+                },
+              ]}
+            >
+              <Text style={[styles.focusCardTitle, { color: textPrimary }]}>No active resolutions</Text>
+              <Text style={[styles.focusFraction, { color: textSecondary }]}>
+                Create a resolution to see insights here.
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+        {focusError ? <Text style={[styles.errorText, { color: "#F87171" }]}>{focusError}</Text> : null}
+
+        <View style={styles.timelineHeader}>
+          <View style={styles.timelineTitleRow}>
+            <Calendar size={18} color={accentColor} />
+            <Text style={[styles.sectionTitle, { color: textPrimary }]}>Your Schedule</Text>
+          </View>
+          <Text style={[styles.sectionSubtitle, { color: textSecondary }]}>
+            Daily view of all upcoming tasks.
+          </Text>
+        </View>
+
+        {loading && !refreshing ? (
+          <View style={styles.loadingBlock}>
+            <ActivityIndicator color={accentColor} />
+          </View>
+        ) : hasTasks ? (
+          grouped.map((section) => (
+            <View key={section.key} style={styles.daySection}>
+              <View style={styles.dayHeaderRow}>
+                <Text
+                  style={[
+                    styles.dayTitle,
+                    { color: section.isToday ? accentColor : textPrimary },
+                  ]}
+                >
+                  {section.title}
+                </Text>
+                {section.isToday ? (
+                  <Text style={[styles.todayBadge, { backgroundColor: theme.accentSoft, color: theme.accentText }]}>
+                    Today
+                  </Text>
+                ) : null}
+              </View>
+              {section.data.map((task) => renderTask(task))}
+            </View>
+          ))
+        ) : (
+          <View style={[styles.emptyCard, { backgroundColor: surface }]}>
+            <Text style={[styles.emptyTitle, { color: textPrimary }]}>No scheduled tasks yet</Text>
+            <Text style={[styles.emptySubtitle, { color: textSecondary }]}>
+              Approve a plan or create a task to fill this view.
+            </Text>
+            <TouchableOpacity
+              style={[styles.createButton, { backgroundColor: accentColor }]}
+              onPress={() => navigation.navigate("ResolutionCreate")}
+            >
+              <Text style={styles.createButtonText}>Create a resolution</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {combinedError ? <Text style={[styles.errorText, { color: dangerColor }]}>{combinedError}</Text> : null}
+
+        <View style={[styles.metaCard, { backgroundColor: theme.accentSoft }]}>
+          <Text style={[styles.metaText, { color: textSecondary }]}>task_request_id: {listRequestId ?? "—"}</Text>
+          {noteRequestId ? <Text style={[styles.metaText, { color: textSecondary }]}>note_request_id: {noteRequestId}</Text> : null}
+        </View>
+      </ScrollView>
+      {renderNoteModal()}
     </View>
   );
+}
+
+function formatWeekRange(start: string, end: string, formatter: Intl.DateTimeFormat): string {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return "This week";
+  }
+  return `${formatter.format(startDate)} - ${formatter.format(endDate)}`;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  listContent: {
-    padding: 16,
-  },
-  sectionHeader: {
-    fontWeight: "600",
-    fontSize: 16,
-    marginTop: 12,
-    marginBottom: 6,
-    color: "#111",
-  },
-  noteText: {
-    marginTop: 8,
-    color: "#333",
-  },
-  noteButton: {
-    marginLeft: 12,
-    paddingVertical: 6,
-  },
-  noteButtonText: {
-    color: "#1a73e8",
-    fontWeight: "600",
-  },
-  editChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#E0E7FF",
-  },
-  editChipText: {
-    color: "#1E3A8A",
-    fontWeight: "600",
-    fontSize: 12,
-  },
-  footerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 8,
   },
   center: {
     flex: 1,
@@ -377,38 +541,192 @@ const styles = StyleSheet.create({
   },
   helper: {
     marginTop: 8,
-    color: "#666",
     textAlign: "center",
   },
-  error: {
-    color: "#c62828",
-    fontSize: 16,
-    textAlign: "center",
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40,
   },
-  retry: {
-    marginTop: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 24,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#1a73e8",
   },
-  retryText: {
-    color: "#1a73e8",
+  screenTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  sectionHeading: {
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  sectionSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+  },
+  focusScroll: {
+    paddingVertical: 4,
+    paddingRight: 20,
+  },
+  focusCard: {
+    width: 260,
+    padding: 20,
+    marginRight: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  focusTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  focusCardTitle: {
+    fontSize: 16,
     fontWeight: "600",
+    flex: 1,
+  },
+  focusFraction: {
+    marginTop: 12,
+    fontWeight: "600",
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 999,
+    marginTop: 8,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  focusRange: {
+    marginTop: 10,
+    fontSize: 12,
+  },
+  focusLoading: {
+    width: 220,
+    height: 140,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  focusLoadingText: {
+    marginTop: 8,
+    fontWeight: "500",
+  },
+  timelineHeader: {
+    marginTop: 28,
+    marginBottom: 12,
+  },
+  timelineTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
+  },
+  loadingBlock: {
+    paddingVertical: 32,
+    alignItems: "center",
+  },
+  daySection: {
+    marginBottom: 24,
+  },
+  dayHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  dayTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  todayBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    fontWeight: "600",
+    fontSize: 12,
+  },
+  noteText: {
+    marginTop: 8,
+  },
+  noteButton: {
+    marginLeft: 12,
+    paddingVertical: 6,
+  },
+  noteButtonText: {
+    fontWeight: "600",
+  },
+  editChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  editChipText: {
+    fontWeight: "600",
+    fontSize: 12,
+  },
+  footerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  emptyCard: {
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
   emptyTitle: {
     fontSize: 20,
+    fontWeight: "700",
+  },
+  emptySubtitle: {
+    marginTop: 6,
+    fontSize: 14,
+  },
+  createButton: {
+    marginTop: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 16,
+  },
+  createButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  errorText: {
+    marginTop: 12,
     fontWeight: "600",
-    color: "#111",
   },
-  debugCard: {
-    padding: 12,
-    borderTopWidth: 1,
-    borderColor: "#e6e9f2",
+  metaCard: {
+    marginTop: 24,
+    padding: 16,
+    borderRadius: 16,
   },
-  debugValue: {
-    color: "#111",
+  metaText: {
+    fontSize: 12,
+    marginBottom: 4,
   },
   modalBackdrop: {
     flex: 1,
@@ -417,61 +735,56 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
     marginBottom: 12,
   },
   noteInput: {
     borderWidth: 1,
-    borderColor: "#d5d9e6",
-    borderRadius: 12,
-    minHeight: 100,
+    borderRadius: 16,
+    minHeight: 110,
     padding: 12,
     textAlignVertical: "top",
   },
   noteCounter: {
     alignSelf: "flex-end",
-    color: "#777",
-    marginTop: 4,
+    marginTop: 6,
     fontSize: 12,
   },
   modalActions: {
     marginTop: 16,
   },
   clearText: {
-    color: "#c62828",
+    color: "#DC2626",
     fontWeight: "600",
   },
   modalButtons: {
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 12,
-    marginTop: 12,
+    marginTop: 16,
   },
   modalButton: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#d0d5dd",
-  },
-  secondaryText: {
-    color: "#1a73e8",
-    fontWeight: "600",
+    borderRadius: 12,
   },
   primary: {
-    backgroundColor: "#1a73e8",
+    backgroundColor: "#4338CA",
   },
   buttonDisabled: {
-    backgroundColor: "#8fb5f8",
+    opacity: 0.6,
   },
   buttonText: {
     color: "#fff",
+    fontWeight: "600",
+  },
+  secondaryText: {
+    color: "#475569",
     fontWeight: "600",
   },
 });

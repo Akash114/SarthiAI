@@ -22,6 +22,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../types/navigation";
 import { useActiveResolutions } from "../hooks/useActiveResolutions";
+import { useTheme } from "../theme";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Interventions">;
 
@@ -43,6 +44,13 @@ export default function InterventionsScreen() {
   const [respondingKey, setRespondingKey] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [lastAction, setLastAction] = useState<{ message: string; changes: string[] } | null>(null);
+  const { theme } = useTheme();
+  const backgroundColor = theme.background;
+  const surface = theme.card;
+  const borderColor = theme.border;
+  const textPrimary = theme.textPrimary;
+  const textSecondary = theme.textSecondary;
+  const accent = theme.accent;
 
   const fetchSnapshot = useCallback(async () => {
     if (!userId) return;
@@ -143,14 +151,14 @@ export default function InterventionsScreen() {
 
   if (!userLoading && !activeResolutionsLoading && hasActiveResolutions === false) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.emptyTitle}>Add a resolution first</Text>
-        <Text style={styles.helper}>Coaching kicks in once you approve your first resolution.</Text>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("ResolutionCreate")}>
+      <View style={[styles.center, { backgroundColor }]}>
+        <Text style={[styles.emptyTitle, { color: textPrimary }]}>Add a resolution first</Text>
+        <Text style={[styles.helper, { color: textSecondary }]}>Coaching kicks in once you approve your first resolution.</Text>
+        <TouchableOpacity style={[styles.button, { backgroundColor: accent }]} onPress={() => navigation.navigate("ResolutionCreate")}>
           <Text style={styles.buttonText}>Create Resolution</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.linkButton} onPress={refreshActiveResolutions}>
-          <Text style={styles.linkText}>Check again</Text>
+          <Text style={[styles.linkText, { color: accent }]}>Check again</Text>
         </TouchableOpacity>
       </View>
     );
@@ -158,29 +166,31 @@ export default function InterventionsScreen() {
 
   if ((userLoading || loading || activeResolutionsLoading) && !refreshing) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#6B8DBF" />
-        <Text style={styles.helper}>Preparing your check-in…</Text>
+      <View style={[styles.center, { backgroundColor }]}>
+        <ActivityIndicator color={accent} />
+        <Text style={[styles.helper, { color: textSecondary }]}>Preparing your check-in…</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchSnapshot(); }} />}
+      contentContainerStyle={[styles.container, { backgroundColor }]}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchSnapshot(); }} tintColor={accent} />
+      }
     >
       <View style={styles.headerRow}>
-        <Text style={styles.title}>Interventions</Text>
+        <Text style={[styles.title, { color: textPrimary }]}>Interventions</Text>
         <TouchableOpacity style={styles.linkButton} onPress={() => navigation.navigate("InterventionsHistory")}>
-          <Text style={styles.linkText}>History</Text>
+          <Text style={[styles.linkText, { color: accent }]}>History</Text>
         </TouchableOpacity>
       </View>
       {error ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.error}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchSnapshot}>
-            <Text style={styles.retryText}>Try again</Text>
+        <View style={[styles.errorBox, { backgroundColor: theme.accentSoft }]}>
+          <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>
+          <TouchableOpacity style={[styles.retryButton, { borderColor: theme.danger }]} onPress={fetchSnapshot}>
+            <Text style={[styles.retryText, { color: theme.danger }]}>Try again</Text>
           </TouchableOpacity>
         </View>
       ) : null}

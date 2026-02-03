@@ -21,12 +21,14 @@ import { formatDisplayDate, formatScheduleLabel, sortTasksBySchedule } from "../
 import { requestCalendarPermissions, syncTaskToCalendar } from "../hooks/useCalendarSync";
 import { useTaskSchedule } from "../hooks/useTaskSchedule";
 import type { RootStackParamList } from "../../types/navigation";
+import { useTheme } from "../theme";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PlanReview">;
 
 export default function PlanReviewScreen({ route, navigation }: Props) {
   const { resolutionId, initialResolution } = route.params;
   const { userId, loading: userLoading } = useUserId();
+  const { theme } = useTheme();
   const {
     plan,
     tasks,
@@ -45,6 +47,13 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
   const [newTaskIdCounter, setNewTaskIdCounter] = useState(0);
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [syncingAll, setSyncingAll] = useState(false);
+  const surface = theme.card;
+  const borderColor = theme.border;
+  const textPrimary = theme.textPrimary;
+  const textSecondary = theme.textSecondary;
+  const muted = theme.textMuted;
+  const accent = theme.accent;
+  const danger = theme.danger;
 
   const weekSections = useMemo(() => {
     if (weeks && weeks.length) {
@@ -370,11 +379,11 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
 
   if ((planLoading || userLoading) && !plan) {
     return (
-      <View style={styles.loadingState}>
-        <View style={styles.loadingCard}>
-          <ActivityIndicator color="#1D4ED8" size="large" />
-          <Text style={styles.loadingTitle}>Cueing up a supportive outline…</Text>
-          <Text style={styles.loadingHelper}>
+      <View style={[styles.loadingState, { backgroundColor: theme.background }]}>
+        <View style={[styles.loadingCard, { backgroundColor: surface, borderColor, shadowColor: theme.shadow }]}>
+          <ActivityIndicator color={accent} size="large" />
+          <Text style={[styles.loadingTitle, { color: textPrimary }]}>Cueing up a supportive outline…</Text>
+          <Text style={[styles.loadingHelper, { color: textSecondary }]}>
             {showStatus ? STATUS_MESSAGES[statusIndex] : "Smoothing the path before we dive in."}
           </Text>
         </View>
@@ -383,23 +392,26 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <View style={styles.screen}>
+    <KeyboardAvoidingView
+      style={[styles.screen, { backgroundColor: theme.background }]}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <View style={[styles.screen, { backgroundColor: theme.background }]}>
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           {plan ? (
             <View style={styles.header}>
-              <Text style={styles.heroTitle}>Proposed Plan</Text>
-              <Text style={styles.heroSubtitle}>Goal: {plan.title}</Text>
+              <Text style={[styles.heroTitle, { color: textPrimary }]}>Proposed Plan</Text>
+              <Text style={[styles.heroSubtitle, { color: textSecondary }]}>Goal: {plan.title}</Text>
             </View>
           ) : null}
 
-          {combinedError ? <Text style={styles.error}>{combinedError}</Text> : null}
+          {combinedError ? <Text style={[styles.error, { color: danger }]}>{combinedError}</Text> : null}
 
           {plan ? (
-            <View style={styles.section}>
+            <View style={[styles.section, { backgroundColor: surface, borderColor, shadowColor: theme.shadow }]}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitleSerif}>Vision</Text>
-                <Text style={styles.sectionHelper}>{plan.plan.weeks} weeks</Text>
+                <Text style={[styles.sectionTitleSerif, { color: textPrimary }]}>Vision</Text>
+                <Text style={[styles.sectionHelper, { color: textSecondary }]}>{plan.plan.weeks} weeks</Text>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeline}>
                 {weekSections.map((section) => {
@@ -407,22 +419,28 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
                   return (
                     <TouchableOpacity
                       key={section.week}
-                      style={[styles.weekPill, active && styles.weekPillActive]}
+                      style={[
+                        styles.weekPill,
+                        {
+                          backgroundColor: active ? accent : theme.surfaceMuted,
+                          borderColor: active ? accent : borderColor,
+                        },
+                      ]}
                       onPress={() => setSelectedWeek(section.week)}
                     >
-                      <Text style={[styles.weekLabel, active && styles.weekLabelActive]}>W{section.week}</Text>
+                      <Text style={[styles.weekLabel, { color: active ? "#fff" : textSecondary }]}>W{section.week}</Text>
                     </TouchableOpacity>
                   );
                 })}
               </ScrollView>
-              <Text style={styles.focusLabel}>
+              <Text style={[styles.focusLabel, { color: textSecondary }]}>
                 Focus: {focusForSelectedWeek || "Reinforce your routine"}
               </Text>
               {selectedMilestone?.success_criteria?.length ? (
-                <View style={styles.goalCard}>
-                  <Text style={styles.goalTitle}>Success signals</Text>
+                <View style={[styles.goalCard, { backgroundColor: theme.surfaceMuted, borderColor }]}>
+                  <Text style={[styles.goalTitle, { color: textPrimary }]}>Success signals</Text>
                   {selectedMilestone.success_criteria.map((criterion, idx) => (
-                    <Text key={`${selectedMilestone.week}-${idx}`} style={styles.goalBullet}>
+                    <Text key={`${selectedMilestone.week}-${idx}`} style={[styles.goalBullet, { color: textSecondary }]}>
                       • {criterion}
                     </Text>
                   ))}
@@ -432,53 +450,57 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
           ) : null}
 
           {showStatus ? (
-            <View style={styles.statusBanner}>
-              <Text style={styles.statusLabel}>Crafting your weekly groove…</Text>
-              <Text style={styles.statusMessage}>{STATUS_MESSAGES[statusIndex]}</Text>
+            <View style={[styles.statusBanner, { backgroundColor: theme.accentSoft, borderColor }]}>
+              <Text style={[styles.statusLabel, { color: accent }]}>Crafting your weekly groove…</Text>
+              <Text style={[styles.statusMessage, { color: textPrimary }]}>{STATUS_MESSAGES[statusIndex]}</Text>
             </View>
           ) : null}
 
           {shouldShowTaskSection ? (
             <View style={styles.taskSection}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitleSerif}>Week {selectedWeek} Tasks</Text>
-                <Text style={styles.sectionHelper}>
+                <Text style={[styles.sectionTitleSerif, { color: textPrimary }]}>Week {selectedWeek} Tasks</Text>
+                <Text style={[styles.sectionHelper, { color: textSecondary }]}>
                   {isEditableWeek ? "Editable" : "Preview"}
                 </Text>
               </View>
               {showUpcomingBanner ? (
-                <View style={styles.upcomingBanner}>
-                  <Text style={styles.upcomingTitle}>Draft – upcoming week</Text>
-                  <Text style={styles.upcomingCopy}>These tasks will unlock as you progress.</Text>
+                <View style={[styles.upcomingBanner, { backgroundColor: theme.surfaceMuted, borderColor }]}>
+                  <Text style={[styles.upcomingTitle, { color: textPrimary }]}>Draft – upcoming week</Text>
+                  <Text style={[styles.upcomingCopy, { color: textSecondary }]}>These tasks will unlock as you progress.</Text>
                 </View>
               ) : null}
               {isEditableWeek
                 ? (displayTasks as EditableTask[]).map((task) => (
-                    <View key={task.id} style={styles.taskCard}>
+                    <View
+                      key={task.id}
+                      style={[styles.taskCard, { backgroundColor: surface, shadowColor: theme.shadow, borderColor }]}
+                    >
                       <TextInput
-                        style={styles.taskInput}
+                        style={[styles.taskInput, { borderColor, color: textPrimary }]}
                         value={task.title}
                         onChangeText={(value) => updateTaskField(task.id, "title", value)}
                         placeholder="Describe the task..."
                         editable={!pending && !success}
+                        placeholderTextColor={muted}
                       />
                       <View style={styles.taskControls}>
                         <TouchableOpacity
-                          style={styles.pillButton}
+                          style={[styles.pillButton, { backgroundColor: theme.surfaceMuted }]}
                           onPress={() => openDatePicker(task)}
                           disabled={pending || !!success}
                         >
-                          <Text style={styles.pillText}>{task.scheduled_day || "Pick date"}</Text>
+                          <Text style={[styles.pillText, { color: textSecondary }]}>{task.scheduled_day || "Pick date"}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={styles.pillButton}
+                          style={[styles.pillButton, { backgroundColor: theme.surfaceMuted }]}
                           onPress={() => openTimePicker(task)}
                           disabled={pending || !!success}
                         >
-                          <Text style={styles.pillText}>{task.scheduled_time || "Pick time"}</Text>
+                          <Text style={[styles.pillText, { color: textSecondary }]}>{task.scheduled_time || "Pick time"}</Text>
                         </TouchableOpacity>
                         <TextInput
-                          style={styles.durationInput}
+                          style={[styles.durationInput, { borderColor, color: textPrimary }]}
                           placeholder="Minutes"
                           keyboardType="number-pad"
                           value={task.duration_min}
@@ -494,32 +516,50 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
               : (displayTasks as WeekPlanTask[]).map((task) => {
                     const scheduleLabel = formatScheduleLabel(task.scheduled_day, task.scheduled_time);
                     return (
-                    <View key={task.id} style={[styles.taskCard, styles.readOnlyCard]}>
-                      <Text style={styles.readOnlyTitle}>{task.title}</Text>
-                      {task.intent ? <Text style={styles.readOnlyIntent}>{task.intent}</Text> : null}
+                    <View
+                      key={task.id}
+                      style={[
+                        styles.taskCard,
+                        styles.readOnlyCard,
+                        { backgroundColor: surface, borderColor, shadowColor: theme.shadow },
+                      ]}
+                    >
+                      <Text style={[styles.readOnlyTitle, { color: textPrimary }]}>{task.title}</Text>
+                      {task.intent ? <Text style={[styles.readOnlyIntent, { color: textSecondary }]}>{task.intent}</Text> : null}
                       <View style={styles.readOnlyMeta}>
-                        {task.cadence ? <Text style={styles.readOnlyChip}>{task.cadence}</Text> : null}
-                        {task.duration_min ? <Text style={styles.readOnlyChip}>{task.duration_min} min</Text> : null}
-                        {task.confidence ? <Text style={styles.readOnlyChip}>Confidence: {task.confidence}</Text> : null}
+                        {task.cadence ? <Text style={[styles.readOnlyChip, { backgroundColor: theme.accentSoft, color: theme.accentText }]}>{task.cadence}</Text> : null}
+                        {task.duration_min ? <Text style={[styles.readOnlyChip, { backgroundColor: theme.accentSoft, color: theme.accentText }]}>{task.duration_min} min</Text> : null}
+                        {task.confidence ? (
+                          <Text style={[styles.readOnlyChip, { backgroundColor: theme.accentSoft, color: theme.accentText }]}>
+                            Confidence: {task.confidence}
+                          </Text>
+                        ) : null}
                       </View>
-                      <Text style={styles.readOnlyTime}>Suggested: {scheduleLabel}</Text>
-                      {task.note ? <Text style={styles.readOnlyNote}>{task.note}</Text> : null}
+                      <Text style={[styles.readOnlyTime, { color: textSecondary }]}>Suggested: {scheduleLabel}</Text>
+                      {task.note ? <Text style={[styles.readOnlyNote, { color: textSecondary }]}>{task.note}</Text> : null}
                     </View>
                   );
                   })}
               {isEditableWeek ? (
-                <TouchableOpacity style={styles.addButton} onPress={addTask} disabled={pending || !!success}>
-                  <Text style={styles.addButtonText}>+ Add another task</Text>
+                <TouchableOpacity
+                  style={[styles.addButton, { borderColor: accent }]}
+                  onPress={addTask}
+                  disabled={pending || !!success}
+                >
+                  <Text style={[styles.addButtonText, { color: accent }]}>+ Add another task</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
           ) : null}
 
           {success ? (
-            <View style={styles.successCard}>
-              <Text style={styles.successTitle}>Plan Activated</Text>
-              <Text style={styles.successSubtitle}>Week 1 tasks are now live in My Week.</Text>
-              <TouchableOpacity style={styles.successButton} onPress={() => navigation.navigate("Home")}>
+            <View style={[styles.successCard, { backgroundColor: theme.success, shadowColor: theme.shadow }]}>
+              <Text style={[styles.successTitle, { color: theme.textPrimary }]}>Plan Activated</Text>
+              <Text style={[styles.successSubtitle, { color: theme.textPrimary }]}>Week 1 tasks are now live in My Week.</Text>
+              <TouchableOpacity
+                style={[styles.successButton, { backgroundColor: theme.accent }]}
+                onPress={() => navigation.navigate("Home")}
+              >
                 <Text style={styles.successButtonText}>Back to Home</Text>
               </TouchableOpacity>
             </View>
@@ -527,19 +567,23 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
         </ScrollView>
 
         {!success ? (
-          <View style={styles.footer}>
+          <View style={[styles.footer, { backgroundColor: theme.surface, borderTopColor: borderColor }]}>
             <TouchableOpacity
-              style={[styles.primaryButton, acceptDisabled && styles.primaryButtonDisabled]}
+              style={[
+                styles.primaryButton,
+                { backgroundColor: accent, shadowColor: theme.shadow },
+                acceptDisabled && styles.primaryButtonDisabled,
+              ]}
               onPress={handleAccept}
               disabled={acceptDisabled}
             >
               {pending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Start Resolution</Text>}
             </TouchableOpacity>
             <TouchableOpacity onPress={handleRegenerate} disabled={pending} style={styles.secondaryLink}>
-              <Text style={styles.secondaryButtonText}>Regenerate</Text>
+              <Text style={[styles.secondaryButtonText, { color: accent }]}>Regenerate</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleReject} disabled={pending}>
-              <Text style={styles.rejectText}>Reject Plan</Text>
+              <Text style={[styles.rejectText, { color: danger }]}>Reject Plan</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -547,9 +591,9 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
 
       {pickerState ? (
         <Modal transparent animationType="fade">
-          <View style={styles.pickerBackdrop}>
-            <View style={styles.pickerCard}>
-              <Text style={styles.sectionTitleSerif}>
+          <View style={[styles.pickerBackdrop, { backgroundColor: theme.overlay }]}>
+            <View style={[styles.pickerCard, { backgroundColor: surface }]}>
+              <Text style={[styles.sectionTitleSerif, { color: textPrimary, marginBottom: 12 }]}>
                 {pickerState.mode === "date" ? "Pick a date" : "Pick a time"}
               </Text>
               <DateTimePicker
@@ -563,10 +607,13 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
                 }}
               />
               <View style={styles.pickerActions}>
-                <TouchableOpacity style={styles.modalButton} onPress={closePicker}>
-                  <Text style={styles.secondaryText}>Cancel</Text>
+                <TouchableOpacity style={[styles.modalButton, { borderColor }]} onPress={closePicker}>
+                  <Text style={[styles.secondaryText, { color: textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.modalButton, styles.modalPrimary]} onPress={confirmPicker}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalPrimary, { backgroundColor: accent }]}
+                  onPress={confirmPicker}
+                >
                   <Text style={styles.buttonText}>Save</Text>
                 </TouchableOpacity>
               </View>
@@ -581,7 +628,6 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FAFAF8",
   },
   container: {
     padding: 20,
@@ -593,25 +639,21 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     fontSize: 30,
-    color: "#2D3748",
     fontFamily: Platform.select({ ios: "Georgia", default: "serif" }),
   },
   heroSubtitle: {
-    color: "#6B7280",
     fontSize: 16,
     fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
   },
   error: {
-    color: "#C53030",
   },
   section: {
-    backgroundColor: "#fff",
     borderRadius: 20,
     padding: 20,
-    shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
+    borderWidth: 1,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -637,17 +679,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: "#E2E8F0",
-  },
-  weekPillActive: {
-    backgroundColor: "#6B8DBF",
   },
   weekLabel: {
     fontWeight: "600",
-    color: "#475569",
-  },
-  weekLabelActive: {
-    color: "#fff",
   },
   focusLabel: {
     marginTop: 14,
@@ -657,37 +691,32 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
   },
   goalCard: {
-    backgroundColor: "#EEF2FF",
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#CBD5F5",
     gap: 6,
   },
   goalTitle: {
     fontWeight: "700",
-    color: "#1D4ED8",
   },
   goalList: {
     marginTop: 4,
     gap: 4,
   },
   goalBullet: {
-    color: "#1E3A8A",
     fontSize: 13,
   },
   taskSection: {
     gap: 12,
   },
   taskCard: {
-    backgroundColor: "#fff",
     borderRadius: 18,
     padding: 16,
-    shadowColor: "#000",
     shadowOpacity: 0.04,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 4 },
     gap: 12,
+    borderWidth: 1,
   },
   taskInput: {
     fontSize: 16,
@@ -715,14 +744,12 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
   },
   taskNoteHelper: {
     marginTop: 6,
-    color: "#64748B",
     fontSize: 13,
   },
   addButton: {
@@ -730,11 +757,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#CBD5F5",
     alignItems: "center",
   },
   addButtonText: {
-    color: "#6B8DBF",
     fontWeight: "600",
   },
   readOnlyCard: {
@@ -743,11 +768,9 @@ const styles = StyleSheet.create({
   },
   readOnlyTitle: {
     fontWeight: "600",
-    color: "#1F2937",
     fontSize: 16,
   },
   readOnlyIntent: {
-    color: "#475569",
     marginTop: 6,
   },
   readOnlyMeta: {
@@ -757,8 +780,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   readOnlyChip: {
-    backgroundColor: "#F1F5F9",
-    color: "#475569",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
@@ -766,12 +787,10 @@ const styles = StyleSheet.create({
   },
   readOnlyTime: {
     marginTop: 12,
-    color: "#64748B",
     fontSize: 13,
   },
   readOnlyNote: {
     marginTop: 8,
-    color: "#475569",
     fontStyle: "italic",
   },
   upcomingBanner: {
@@ -784,34 +803,26 @@ const styles = StyleSheet.create({
   },
   upcomingTitle: {
     fontWeight: "600",
-    color: "#4338CA",
     marginBottom: 4,
   },
-  upcomingCopy: {
-    color: "#414B5A",
-  },
+  upcomingCopy: {},
   statusBanner: {
-    backgroundColor: "#EFF6FF",
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#BFDBFE",
     gap: 4,
     marginTop: 16,
   },
   statusLabel: {
     fontSize: 12,
     letterSpacing: 0.5,
-    color: "#1D4ED8",
     fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
   },
   statusMessage: {
     fontSize: 16,
-    color: "#1E293B",
     fontFamily: Platform.select({ ios: "System", default: "sans-serif-medium" }),
   },
   successCard: {
-    backgroundColor: "#9DB8A0",
     borderRadius: 20,
     padding: 20,
     gap: 8,
@@ -819,17 +830,14 @@ const styles = StyleSheet.create({
   successTitle: {
     fontFamily: Platform.select({ ios: "Georgia", default: "serif" }),
     fontSize: 20,
-    color: "#0F172A",
   },
   successSubtitle: {
-    color: "#0F172A",
     fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
   },
   successButton: {
     marginTop: 12,
     paddingVertical: 12,
     borderRadius: 999,
-    backgroundColor: "#1F2933",
     alignItems: "center",
   },
   successButtonText: {
@@ -841,15 +849,12 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === "ios" ? 32 : 20,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#FAFAF8",
     gap: 8,
   },
   primaryButton: {
     paddingVertical: 14,
     borderRadius: 999,
     alignItems: "center",
-    backgroundColor: "#6B8DBF",
   },
   primaryButtonDisabled: {
     opacity: 0.5,
@@ -863,21 +868,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryButtonText: {
-    color: "#6B8DBF",
     fontWeight: "600",
   },
   rejectText: {
-    color: "#94A3B8",
     textAlign: "center",
   },
   pickerBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
     justifyContent: "center",
     padding: 24,
   },
   pickerCard: {
-    backgroundColor: "#fff",
     borderRadius: 18,
     padding: 20,
   },
@@ -891,7 +892,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   modalPrimary: {
-    backgroundColor: "#6B8DBF",
     borderRadius: 10,
   },
   buttonText: {
@@ -899,16 +899,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   secondaryText: {
-    color: "#6B8DBF",
     fontWeight: "600",
-  },
-  helper: {
-    marginTop: 8,
-    color: "#666",
   },
   loadingState: {
     flex: 1,
-    backgroundColor: "#FAFAF8",
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
@@ -917,8 +911,6 @@ const styles = StyleSheet.create({
     width: "85%",
     borderRadius: 24,
     padding: 24,
-    backgroundColor: "#ffffff",
-    shadowColor: "#0F172A",
     shadowOpacity: 0.08,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
@@ -928,12 +920,10 @@ const styles = StyleSheet.create({
   loadingTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#1E293B",
     textAlign: "center",
   },
   loadingHelper: {
     textAlign: "center",
-    color: "#475569",
   },
 });
 

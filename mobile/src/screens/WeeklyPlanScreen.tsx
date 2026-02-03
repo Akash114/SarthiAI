@@ -16,12 +16,14 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../types/navigation";
 import { useActiveResolutions } from "../hooks/useActiveResolutions";
+import { useTheme } from "../theme";
 
 type WeeklyPlanNav = NativeStackNavigationProp<RootStackParamList, "WeeklyPlan">;
 
 export default function WeeklyPlanScreen() {
   const { userId, loading: userLoading } = useUserId();
   const navigation = useNavigation<WeeklyPlanNav>();
+  const { theme } = useTheme();
   const {
     hasActiveResolutions,
     loading: activeResolutionsLoading,
@@ -34,6 +36,12 @@ export default function WeeklyPlanScreen() {
   const [notFound, setNotFound] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [running, setRunning] = useState(false);
+  const backgroundColor = theme.background;
+  const surface = theme.card;
+  const borderColor = theme.border;
+  const textPrimary = theme.textPrimary;
+  const textSecondary = theme.textSecondary;
+  const accent = theme.accent;
 
   const fetchPlan = useCallback(async () => {
     if (!userId) return;
@@ -93,14 +101,17 @@ export default function WeeklyPlanScreen() {
 
   if (!userLoading && !activeResolutionsLoading && hasActiveResolutions === false) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.emptyTitle}>Start with a resolution</Text>
-        <Text style={styles.helper}>Create a resolution to unlock weekly planning.</Text>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("ResolutionCreate")}>
+      <View style={[styles.center, { backgroundColor }]}>
+        <Text style={[styles.emptyTitle, { color: textPrimary }]}>Start with a resolution</Text>
+        <Text style={[styles.helper, { color: textSecondary }]}>Create a resolution to unlock weekly planning.</Text>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: accent }]}
+          onPress={() => navigation.navigate("ResolutionCreate")}
+        >
           <Text style={styles.buttonText}>Create Resolution</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.linkButton} onPress={refreshActiveResolutions}>
-          <Text style={styles.linkText}>Check again</Text>
+          <Text style={[styles.linkText, { color: accent }]}>Check again</Text>
         </TouchableOpacity>
       </View>
     );
@@ -108,9 +119,9 @@ export default function WeeklyPlanScreen() {
 
   if ((userLoading || loading || activeResolutionsLoading) && !refreshing) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#6B8DBF" />
-        <Text style={styles.helper}>Fetching your weekly snapshot…</Text>
+      <View style={[styles.center, { backgroundColor }]}>
+        <ActivityIndicator color={accent} />
+        <Text style={[styles.helper, { color: textSecondary }]}>Fetching your weekly snapshot…</Text>
       </View>
     );
   }
@@ -119,17 +130,19 @@ export default function WeeklyPlanScreen() {
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchPlan(); }} />}
+      contentContainerStyle={[styles.container, { backgroundColor }]}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchPlan(); }} tintColor={accent} />
+      }
     >
       <View style={styles.headerRow}>
-        <Text style={styles.title}>Weekly Plan</Text>
+        <Text style={[styles.title, { color: textPrimary }]}>Weekly Plan</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.linkButton} onPress={() => navigation.navigate("WeeklyPlanHistory")}>
-            <Text style={styles.linkText}>History</Text>
+            <Text style={[styles.linkText, { color: accent }]}>History</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.updateButton, running && styles.buttonDisabled]}
+            style={[styles.updateButton, { backgroundColor: accent }, running && styles.buttonDisabled]}
             onPress={handleGenerate}
             disabled={running}
           >
@@ -138,31 +151,31 @@ export default function WeeklyPlanScreen() {
         </View>
       </View>
       {error ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.error}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchPlan}>
-            <Text style={styles.retryText}>Try again</Text>
+        <View style={[styles.errorBox, { backgroundColor: theme.accentSoft }]}>
+          <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>
+          <TouchableOpacity style={[styles.retryButton, { borderColor: theme.danger }]} onPress={fetchPlan}>
+            <Text style={[styles.retryText, { color: theme.danger }]}>Try again</Text>
           </TouchableOpacity>
         </View>
       ) : null}
 
       {plan ? (
         <>
-          <View style={styles.focusCard}>
-            <Text style={styles.dateLabel}>{dateLabel}</Text>
-            <Text style={styles.focusTitle}>{plan.micro_resolution.title}</Text>
-            <Text style={styles.focusBody}>{plan.micro_resolution.why_this}</Text>
+          <View style={[styles.focusCard, { backgroundColor: surface, borderColor, shadowColor: theme.shadow }]}>
+            <Text style={[styles.dateLabel, { color: textSecondary }]}>{dateLabel}</Text>
+            <Text style={[styles.focusTitle, { color: textPrimary }]}>{plan.micro_resolution.title}</Text>
+            <Text style={[styles.focusBody, { color: textSecondary }]}>{plan.micro_resolution.why_this}</Text>
           </View>
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Suggested Actions</Text>
           </View>
           {plan.micro_resolution.suggested_week_1_tasks.map((task) => (
-            <View key={task.title} style={styles.taskRow}>
-              <Circle size={10} color="#6B8DBF" />
+            <View key={task.title} style={[styles.taskRow, { backgroundColor: surface, borderColor }]}>
+              <Circle size={10} color={accent} />
               <View style={styles.taskContent}>
-                <Text style={styles.taskTitle}>{task.title}</Text>
-                <Text style={styles.taskMeta}>
+                <Text style={[styles.taskTitle, { color: textPrimary }]}>{task.title}</Text>
+                <Text style={[styles.taskMeta, { color: textSecondary }]}>
                   {task.duration_min ? `${task.duration_min} min` : "Flexible"}
                   {task.suggested_time ? ` · ${task.suggested_time}` : ""}
                 </Text>
@@ -170,20 +183,22 @@ export default function WeeklyPlanScreen() {
             </View>
           ))}
 
-          <View style={styles.debugBox}>
-            <Text style={styles.debugLabel}>Req ID: {requestId || plan.request_id || "—"}</Text>
-            <Text style={styles.debugLabel}>Completion: {(plan.inputs.completion_rate * 100).toFixed(0)}%</Text>
+          <View style={[styles.debugBox, { backgroundColor: theme.surfaceMuted }]}>
+            <Text style={[styles.debugLabel, { color: textSecondary }]}>Req ID: {requestId || plan.request_id || "—"}</Text>
+            <Text style={[styles.debugLabel, { color: textSecondary }]}>
+              Completion: {(plan.inputs.completion_rate * 100).toFixed(0)}%
+            </Text>
           </View>
         </>
       ) : null}
 
       {!plan && hasActiveResolutions ? (
-        <View style={styles.emptyState}>
+        <View style={[styles.emptyState, { backgroundColor: surface, borderColor }]}>
           <Sun size={48} color="#FDBA74" />
-          <Text style={styles.emptyTitle}>Ready to plan your week?</Text>
-          <Text style={styles.helper}>Let&apos;s find your focus.</Text>
+          <Text style={[styles.emptyTitle, { color: textPrimary }]}>Ready to plan your week?</Text>
+          <Text style={[styles.helper, { color: textSecondary }]}>Let&apos;s find your focus.</Text>
           <TouchableOpacity
-            style={[styles.button, running && styles.buttonDisabled]}
+            style={[styles.button, { backgroundColor: accent }, running && styles.buttonDisabled]}
             onPress={handleGenerate}
             disabled={running}
           >
@@ -206,7 +221,6 @@ function formatRange(start: string, end: string): string {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    backgroundColor: "#FAFAF8",
     gap: 16,
   },
   center: {
@@ -214,12 +228,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
-    backgroundColor: "#FAFAF8",
   },
   title: {
     fontSize: 30,
     fontFamily: Platform.select({ ios: "Georgia", default: "serif" }),
-    color: "#2D3748",
   },
   headerRow: {
     flexDirection: "row",
@@ -236,11 +248,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   linkText: {
-    color: "#6B8DBF",
     fontWeight: "600",
   },
   updateButton: {
-    backgroundColor: "#2D3748",
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -252,12 +262,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   focusCard: {
-    backgroundColor: "#fff",
     borderRadius: 24,
     padding: 24,
     borderWidth: 1,
-    borderColor: "#F3F4F6",
-    shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
@@ -266,18 +273,15 @@ const styles = StyleSheet.create({
   dateLabel: {
     fontSize: 12,
     textTransform: "uppercase",
-    color: "#6B7280",
     letterSpacing: 1,
   },
   focusTitle: {
     fontSize: 28,
     fontFamily: Platform.select({ ios: "Georgia", default: "serif" }),
-    color: "#1F2933",
     marginTop: 8,
   },
   focusBody: {
     marginTop: 12,
-    color: "#6B7280",
     fontStyle: "italic",
     fontSize: 16,
   },
@@ -288,16 +292,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#1F2933",
   },
   taskRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#F3F4F6",
     marginBottom: 8,
     gap: 12,
   },
@@ -306,22 +307,19 @@ const styles = StyleSheet.create({
   },
   taskTitle: {
     fontWeight: "600",
-    color: "#1F2933",
   },
   taskMeta: {
-    color: "#6B7280",
     marginTop: 4,
   },
   button: {
     marginTop: 16,
-    backgroundColor: "#6B8DBF",
     paddingVertical: 14,
     borderRadius: 999,
     alignItems: "center",
     paddingHorizontal: 24,
   },
   buttonDisabled: {
-    backgroundColor: "#A5B8D9",
+    opacity: 0.5,
   },
   buttonText: {
     color: "#fff",
@@ -329,29 +327,24 @@ const styles = StyleSheet.create({
   },
   helper: {
     marginTop: 8,
-    color: "#6B7280",
     textAlign: "center",
   },
   emptyState: {
     marginTop: 24,
-    backgroundColor: "#fff",
     borderRadius: 24,
     padding: 24,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#FDEAD8",
   },
   emptyTitle: {
     fontSize: 20,
     fontWeight: "600",
-    color: "#1F2933",
     marginTop: 12,
   },
   error: {
-    color: "#c62828",
+    fontWeight: "600",
   },
   errorBox: {
-    backgroundColor: "#fdecea",
     borderRadius: 12,
     padding: 12,
   },
@@ -362,21 +355,17 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#c62828",
   },
   retryText: {
-    color: "#c62828",
     fontWeight: "600",
   },
   debugBox: {
     marginTop: 16,
     padding: 8,
     borderRadius: 8,
-    backgroundColor: "#f3f4f8",
   },
   debugLabel: {
     fontSize: 12,
-    color: "#555",
     textAlign: "center",
   },
 });

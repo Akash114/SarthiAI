@@ -15,6 +15,7 @@ import { Sparkles } from "lucide-react-native";
 import { createResolution } from "../api/resolutions";
 import { useUserId } from "../state/user";
 import type { RootStackParamList } from "../../types/navigation";
+import { useTheme } from "../theme";
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, "ResolutionCreate">;
 
@@ -26,6 +27,7 @@ const PRESETS = [4, 8, 12] as const;
 export default function ResolutionCreateScreen() {
   const navigation = useNavigation<NavProp>();
   const { userId, loading: userLoading } = useUserId();
+  const { theme } = useTheme();
   const [text, setText] = useState("");
   const [duration, setDuration] = useState("");
   const [customVisible, setCustomVisible] = useState(false);
@@ -77,60 +79,89 @@ export default function ResolutionCreateScreen() {
 
   if (userLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.helper}>Preparing your workspace…</Text>
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <ActivityIndicator color={theme.accent} />
+        <Text style={[styles.helperText, { color: theme.textSecondary }]}>Preparing your workspace…</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>New Resolution</Text>
-        <Text style={styles.helper}>Add a focus area in your own words. We’ll keep it gentle and collaborative.</Text>
+    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <View style={[styles.heroCard, { backgroundColor: theme.heroPrimary, shadowColor: theme.shadow }]}>
+          <View style={styles.heroIcon}>
+            <Sparkles size={18} color="#fff" />
+          </View>
+          <Text style={styles.heroTitle}>Plant a gentle commitment</Text>
+          <Text style={styles.heroSubtitle}>Describe your focus and we’ll draft the first supportive plan.</Text>
+        </View>
 
-        <Text style={styles.label}>What is your main goal?</Text>
-        <TextInput
-          style={styles.input}
-          multiline
-          placeholder="e.g., Run a 5k in 2 months, Read 10 pages daily..."
-          value={text}
-          onChangeText={setText}
-          textAlignVertical="top"
-          editable={!loading}
-          maxLength={MAX_TEXT}
-        />
-        <Text style={styles.counter}>
-          {trimmed.length}/{MAX_TEXT}
+        <Text style={[styles.helperText, { color: theme.textSecondary }]}>
+          Add a focus area in your own words. We’ll keep it gentle and collaborative.
         </Text>
 
-        <Text style={styles.label}>Commitment Timeline</Text>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>What is your main goal?</Text>
+        <View style={[styles.inputCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
+          <TextInput
+            style={[styles.input, { color: theme.textPrimary }]}
+            multiline
+            placeholder="e.g., Run a mindful 5k, ship my side project, read nightly…"
+            placeholderTextColor={theme.textMuted}
+            value={text}
+            onChangeText={setText}
+            textAlignVertical="top"
+            editable={!loading}
+            maxLength={MAX_TEXT}
+          />
+          <Text style={[styles.counter, { color: theme.textMuted }]}>
+            {trimmed.length}/{MAX_TEXT}
+          </Text>
+        </View>
+
+        <Text style={[styles.label, { color: theme.textSecondary }]}>Commitment Timeline</Text>
         <View style={styles.pillRow}>
-          {PRESETS.map((preset) => (
-            <TouchableOpacity
-              key={preset}
-              style={[styles.pill, duration === String(preset) && styles.pillActive]}
-              onPress={() => handlePresetSelect(preset)}
-              disabled={loading}
-            >
-              <Text style={[styles.pillText, duration === String(preset) && styles.pillTextActive]}>{preset} Weeks</Text>
-            </TouchableOpacity>
-          ))}
+          {PRESETS.map((preset) => {
+            const active = duration === String(preset);
+            return (
+              <TouchableOpacity
+                key={preset}
+                style={[
+                  styles.pill,
+                  { borderColor: theme.border, backgroundColor: theme.surface },
+                  active && { backgroundColor: theme.accent, borderColor: theme.accent },
+                ]}
+                onPress={() => handlePresetSelect(preset)}
+                disabled={loading}
+              >
+                <Text style={[styles.pillText, { color: active ? "#fff" : theme.textPrimary }]}>{preset} Weeks</Text>
+              </TouchableOpacity>
+            );
+          })}
           <TouchableOpacity
-            style={[styles.pill, customVisible && styles.pillActive]}
+            style={[
+              styles.pill,
+              { borderColor: theme.border, backgroundColor: theme.surface },
+              customVisible && { backgroundColor: theme.accent, borderColor: theme.accent },
+            ]}
             onPress={handleCustomSelect}
             disabled={loading}
           >
-            <Text style={[styles.pillText, customVisible && styles.pillTextActive]}>Custom</Text>
+            <Text style={[styles.pillText, { color: customVisible ? "#fff" : theme.textPrimary }]}>Custom</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.helperSmall}>Sarthi AI needs at least 4 weeks to help you build a habit loop.</Text>
+        <Text style={[styles.helperSmall, { color: theme.textSecondary }]}>
+          Sarathi needs at least 4 weeks to build a gentle habit loop.
+        </Text>
 
         {customVisible ? (
           <TextInput
-            style={styles.durationInput}
+            style={[
+              styles.durationInput,
+              { borderColor: theme.border, backgroundColor: theme.card, color: theme.textPrimary },
+            ]}
             placeholder="Enter weeks (4-52)"
+            placeholderTextColor={theme.textMuted}
             value={duration}
             onChangeText={(value) => setDuration(clampDuration(value))}
             keyboardType="number-pad"
@@ -138,12 +169,12 @@ export default function ResolutionCreateScreen() {
           />
         ) : null}
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
       </ScrollView>
 
-      <View style={styles.ctaWrapper}>
+      <View style={[styles.ctaWrapper, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
         <TouchableOpacity
-          style={[styles.button, !canSubmit && styles.buttonDisabled]}
+          style={[styles.button, { backgroundColor: theme.accent, shadowColor: theme.shadow }, !canSubmit && styles.buttonDisabled]}
           onPress={handleSubmit}
           disabled={!canSubmit}
         >
@@ -165,7 +196,7 @@ export default function ResolutionCreateScreen() {
             )
           }
         >
-          <Text style={styles.linkText}>Need inspiration?</Text>
+          <Text style={[styles.linkText, { color: theme.accent }]}>Need inspiration?</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -183,93 +214,103 @@ function clampDuration(value: string): string {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#f7f8fa",
   },
   container: {
     padding: 20,
     flexGrow: 1,
-    },
-  title: {
-    fontSize: 28,
-    fontWeight: "600",
-    color: "#111",
+    gap: 16,
   },
-  helper: {
-    color: "#555",
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  heroCard: {
+    borderRadius: 24,
+    padding: 20,
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  heroIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  heroTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  heroSubtitle: {
+    marginTop: 6,
+    color: "rgba(255,255,255,0.85)",
+  },
+  helperText: {
     marginTop: 8,
-    marginBottom: 16,
   },
   label: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#333",
-    marginBottom: 8,
+  },
+  inputCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
   },
   input: {
     minHeight: 140,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#cfcfcf",
-    padding: 12,
     fontSize: 16,
-    backgroundColor: "#fff",
   },
   counter: {
     alignSelf: "flex-end",
-    marginTop: 4,
-    color: "#777",
     fontSize: 12,
+    marginTop: 6,
   },
   pillRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
-    marginTop: 8,
+    gap: 10,
+    marginTop: 12,
   },
   pill: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#cfd4e4",
-    backgroundColor: "#fff",
-  },
-  pillActive: {
-    backgroundColor: "#1a73e8",
-    borderColor: "#1a73e8",
   },
   pillText: {
-    color: "#1f2933",
     fontWeight: "600",
-  },
-  pillTextActive: {
-    color: "#fff",
   },
   helperSmall: {
     marginTop: 6,
-    color: "#6b7280",
     fontSize: 12,
   },
   durationInput: {
     marginTop: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#cfcfcf",
     padding: 12,
-    backgroundColor: "#fff",
   },
   button: {
     flexDirection: "row",
     gap: 8,
-    marginTop: 12,
-    backgroundColor: "#1a73e8",
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
   buttonDisabled: {
-    backgroundColor: "#8fb5f8",
+    opacity: 0.5,
   },
   buttonText: {
     color: "#fff",
@@ -278,27 +319,18 @@ const styles = StyleSheet.create({
   },
   error: {
     marginTop: 12,
-    color: "#c62828",
   },
   linkButton: {
     marginTop: 12,
     alignItems: "center",
   },
   linkText: {
-    color: "#1a73e8",
     fontWeight: "500",
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
   },
   ctaWrapper: {
     paddingHorizontal: 20,
     paddingBottom: 24,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fefefe",
   },
 });

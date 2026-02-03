@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View, Platform } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Calendar, Shield, Power, PauseCircle, FileText, Bell } from "lucide-react-native";
@@ -7,13 +7,25 @@ import { getPreferences, updatePreferences, PreferencesResponse } from "../api/p
 import { useUserId } from "../state/user";
 import type { RootStackParamList } from "../../types/navigation";
 import { useNotifications } from "../hooks/useNotifications";
+import { useTheme } from "../theme";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "SettingsPermissions">;
+
+type SettingRowProps = {
+  label: string;
+  description: string;
+  value: boolean;
+  disabled?: boolean;
+  paused?: boolean;
+  onValueChange: (value: boolean) => void;
+  icon?: React.ReactNode;
+};
 
 export default function SettingsPermissionsScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { userId, loading: userLoading } = useUserId();
   const { registerForPushNotificationsAsync } = useNotifications();
+  const { theme } = useTheme();
   const [prefs, setPrefs] = useState<PreferencesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +74,9 @@ export default function SettingsPermissionsScreen() {
 
   if (userLoading || (loading && !prefs)) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#6B8DBF" />
-        <Text style={styles.helper}>Loading your settings…</Text>
+      <View style={[styles.center, { backgroundColor: theme.background }]}> 
+        <ActivityIndicator color={theme.accent} />
+        <Text style={[styles.helper, { color: theme.textSecondary }]}>Loading your settings…</Text>
       </View>
     );
   }
@@ -89,52 +101,58 @@ export default function SettingsPermissionsScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Agent Controls</Text>
-      <Text style={styles.subtitle}>You are in charge. Configure how Sarthi AI helps you.</Text>
+    <ScrollView contentContainerStyle={[styles.container, { backgroundColor: theme.background }]}> 
+      <Text style={[styles.title, { color: theme.textPrimary }]}>Agent Controls</Text>
+      <Text style={[styles.subtitle, { color: theme.textSecondary }]}>You are in charge. Configure how Sarthi AI helps you.</Text>
 
       {error ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.error}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchPrefs}>
-            <Text style={styles.retryText}>Try again</Text>
+        <View style={[styles.errorBox, { backgroundColor: theme.accentSoft }]}> 
+          <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>
+          <TouchableOpacity style={[styles.retryButton, { borderColor: theme.danger }]} onPress={fetchPrefs}>
+            <Text style={[styles.retryText, { color: theme.danger }]}>Try again</Text>
           </TouchableOpacity>
         </View>
       ) : null}
 
       {prefs ? (
         <>
-          <View style={[styles.masterCard, prefs.coaching_paused ? styles.masterPaused : styles.masterActive]}>
+          <View
+            style={[styles.masterCard, { backgroundColor: theme.card, borderColor: theme.border, shadowColor: theme.shadow }]}
+          >
             <View style={styles.masterHeader}>
-              <View style={[styles.statusDot, prefs.coaching_paused ? styles.dotPaused : styles.dotActive]} />
-              <Text style={styles.statusText}>{prefs.coaching_paused ? "Paused" : "Active"}</Text>
+              <View
+                style={[styles.statusDot, { backgroundColor: prefs.coaching_paused ? theme.danger : theme.success }]}
+              />
+              <Text style={[styles.statusText, { color: theme.textPrimary }]}>
+                {prefs.coaching_paused ? "Paused" : "Active"}
+              </Text>
             </View>
-            <Text style={styles.masterCopy}>
+            <Text style={[styles.masterCopy, { color: theme.textSecondary }]}>
               {prefs.coaching_paused
                 ? "Sarthi AI is in silent mode. No new plans will be generated."
                 : "Sarthi AI is active and monitoring your plan."}
             </Text>
             <TouchableOpacity
-              style={prefs.coaching_paused ? styles.resumeButton : styles.pauseButton}
+              style={[styles.primaryButton, { backgroundColor: prefs.coaching_paused ? theme.accent : theme.surface }]}
               onPress={() => handleToggle("coaching_paused", !prefs.coaching_paused)}
               disabled={savingKey !== null}
             >
               {prefs.coaching_paused ? (
                 <>
                   <Power size={16} color="#fff" />
-                  <Text style={styles.resumeText}>Resume Coaching</Text>
+                  <Text style={styles.primaryButtonText}>Resume Coaching</Text>
                 </>
               ) : (
                 <>
-                  <PauseCircle size={16} color="#1F2933" />
-                  <Text style={styles.pauseText}>Pause Coaching (Snooze)</Text>
+                  <PauseCircle size={16} color={theme.textPrimary} />
+                  <Text style={[styles.secondaryButtonText, { color: theme.textPrimary }]}>Pause Coaching (Snooze)</Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Agent Permissions</Text>
+          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Agent Permissions</Text>
             <SettingRow
               label="Weekly plans"
               description="Allow Sarthi AI to generate weekly plans."
@@ -142,7 +160,7 @@ export default function SettingsPermissionsScreen() {
               onValueChange={(value) => handleToggle("weekly_plans_enabled", value)}
               disabled={savingKey !== null || prefs.coaching_paused}
               paused={prefs.coaching_paused}
-              icon={<Calendar size={20} color="#6B7280" />}
+              icon={<Calendar size={20} color={theme.textSecondary} />}
             />
             <SettingRow
               label="Interventions"
@@ -151,19 +169,22 @@ export default function SettingsPermissionsScreen() {
               onValueChange={(value) => handleToggle("interventions_enabled", value)}
               disabled={savingKey !== null || prefs.coaching_paused}
               paused={prefs.coaching_paused}
-              icon={<Shield size={20} color="#6B7280" />}
+              icon={<Shield size={20} color={theme.textSecondary} />}
             />
           </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>System</Text>
-            <TouchableOpacity style={styles.systemRow} onPress={handleNotificationEnable}>
-              <View style={styles.systemIcon}>
-                <Bell size={18} color="#1F2933" />
+          <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>System</Text>
+            <TouchableOpacity
+              style={[styles.systemRow, { borderColor: theme.border }]}
+              onPress={handleNotificationEnable}
+            >
+              <View style={[styles.systemIcon, { backgroundColor: theme.surfaceMuted }]}>
+                <Bell size={18} color={theme.textPrimary} />
               </View>
               <View style={styles.notificationText}>
-                <Text style={styles.systemText}>Push reminders</Text>
-                <Text style={styles.notificationHelper}>
+                <Text style={[styles.systemText, { color: theme.textPrimary }]}>Push reminders</Text>
+                <Text style={[styles.notificationHelper, { color: theme.textSecondary }]}>
                   {notificationStatus === "granted"
                     ? "Enabled"
                     : notificationStatus === "denied"
@@ -171,41 +192,45 @@ export default function SettingsPermissionsScreen() {
                       : "Tap to enable task reminders"}
                 </Text>
               </View>
-              <Text style={styles.chevron}>›</Text>
+              <Text style={[styles.chevron, { color: theme.textSecondary }]}>›</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.systemRow} onPress={() => navigation.navigate("AgentLog")}>
-              <View style={styles.systemIcon}>
-                <FileText size={18} color="#1F2933" />
+            <TouchableOpacity
+              style={[styles.systemRow, { borderColor: theme.border }]}
+              onPress={() => navigation.navigate("AgentLog")}
+            >
+              <View style={[styles.systemIcon, { backgroundColor: theme.surfaceMuted }]}>
+                <FileText size={18} color={theme.textPrimary} />
               </View>
-              <Text style={styles.systemText}>View Agent Log</Text>
-              <Text style={styles.chevron}>›</Text>
+              <Text style={[styles.systemText, { color: theme.textPrimary }]}>View Agent Log</Text>
+              <Text style={[styles.chevron, { color: theme.textSecondary }]}>›</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.debugLabel}>request_id: {requestId || prefs.request_id || "—"}</Text>
+          <Text style={[styles.debugLabel, { color: theme.textMuted }]}>request_id: {requestId || prefs.request_id || "—"}</Text>
         </>
       ) : null}
     </ScrollView>
   );
 }
 
-type SettingRowProps = {
-  label: string;
-  description: string;
-  value: boolean;
-  disabled?: boolean;
-  paused?: boolean;
-  onValueChange: (value: boolean) => void;
-  icon?: React.ReactNode;
-};
-
 function SettingRow({ label, description, value, disabled, paused, onValueChange, icon }: SettingRowProps) {
+  const { theme } = useTheme();
   return (
-    <View style={[styles.row, paused && styles.rowPaused]}>
-      <View style={styles.iconCircle}>{icon}</View>
+    <View
+      style={[
+        styles.row,
+        {
+          backgroundColor: theme.card,
+          borderColor: theme.border,
+          shadowColor: theme.shadow,
+          opacity: paused ? 0.5 : 1,
+        },
+      ]}
+    >
+      <View style={[styles.iconCircle, { backgroundColor: theme.surfaceMuted }]}>{icon}</View>
       <View style={styles.rowText}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.rowDescription}>{description}</Text>
+        <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>{label}</Text>
+        <Text style={[styles.rowDescription, { color: theme.textSecondary }]}>{description}</Text>
       </View>
       <Switch value={value} onValueChange={onValueChange} disabled={disabled} />
     </View>
@@ -216,35 +241,29 @@ const styles = StyleSheet.create({
   container: {
     padding: 24,
     gap: 16,
-    backgroundColor: "#FAFAF8",
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FAFAF8",
   },
   helper: {
     marginTop: 8,
-    color: "#666",
+    textAlign: "center",
   },
   title: {
     fontSize: 30,
-    color: "#2D3748",
-    fontFamily: Platform.select({ ios: "Georgia", default: "serif" }),
+    fontWeight: "700",
   },
   subtitle: {
-    color: "#6B7280",
-    fontFamily: Platform.select({ ios: "System", default: "sans-serif" }),
     marginBottom: 12,
   },
   errorBox: {
-    backgroundColor: "#fdecea",
     borderRadius: 12,
     padding: 12,
   },
   error: {
-    color: "#c62828",
+    fontWeight: "600",
   },
   retryButton: {
     marginTop: 8,
@@ -253,25 +272,17 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#c62828",
   },
   retryText: {
-    color: "#c62828",
     fontWeight: "600",
   },
   masterCard: {
     borderRadius: 24,
     padding: 20,
-  },
-  masterActive: {
-    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#bbf7d0",
-  },
-  masterPaused: {
-    backgroundColor: "#FEF3C7",
-    borderWidth: 1,
-    borderColor: "#FDE68A",
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
   },
   masterHeader: {
     flexDirection: "row",
@@ -283,78 +294,55 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
   },
-  dotActive: {
-    backgroundColor: "#16A34A",
-  },
-  dotPaused: {
-    backgroundColor: "#B45309",
-  },
   statusText: {
-    color: "#374151",
     fontWeight: "600",
   },
   masterCopy: {
     marginTop: 8,
-    color: "#1F2933",
+    fontSize: 14,
   },
-  pauseButton: {
-    marginTop: 12,
+  primaryButton: {
+    marginTop: 16,
     paddingVertical: 12,
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#1F2933",
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-  },
-  resumeButton: {
-    marginTop: 12,
-    paddingVertical: 12,
-    borderRadius: 999,
-    backgroundColor: "#6B8DBF",
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
     gap: 8,
   },
-  pauseText: {
-    color: "#1F2933",
-    fontWeight: "600",
-  },
-  resumeText: {
+  primaryButtonText: {
     color: "#fff",
     fontWeight: "600",
   },
+  secondaryButtonText: {
+    fontWeight: "600",
+  },
   section: {
-    marginTop: 20,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    gap: 12,
   },
   sectionTitle: {
     fontWeight: "600",
-    color: "#1F2933",
-    marginBottom: 12,
+    fontSize: 16,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "#fff",
-    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
+    borderRadius: 18,
+    borderWidth: 1,
+    shadowOpacity: 0.04,
     shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  rowPaused: {
-    opacity: 0.6,
+    shadowOffset: { width: 0, height: 3 },
   },
   iconCircle: {
     width: 40,
     height: 40,
-    borderRadius: 999,
-    backgroundColor: "#EEF2FF",
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -363,53 +351,47 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     fontWeight: "600",
-    color: "#111827",
   },
   rowDescription: {
-    color: "#6B7280",
     marginTop: 4,
+    fontSize: 13,
   },
   systemRow: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
     gap: 12,
-    shadowColor: "#000",
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
     shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
   },
   systemIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#EEF2FF",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
   systemText: {
     flex: 1,
     fontWeight: "600",
-    color: "#1F2933",
   },
   notificationText: {
     flex: 1,
   },
   notificationHelper: {
     fontSize: 12,
-    color: "#6B7280",
     marginTop: 2,
   },
   chevron: {
     fontSize: 20,
-    color: "#94A3B8",
   },
   debugLabel: {
     marginTop: 24,
     fontSize: 12,
-    color: "#6B7280",
     textAlign: "center",
   },
 });

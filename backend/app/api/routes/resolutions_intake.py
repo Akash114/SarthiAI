@@ -13,6 +13,7 @@ from app.db.models.resolution import Resolution
 from app.observability.metrics import log_metric
 from app.observability.tracing import trace
 from app.services.resolution_intake import derive_resolution_fields
+from app.services.resolution_category import infer_category
 from app.services.user_service import get_or_create_user
 
 router = APIRouter()
@@ -54,10 +55,12 @@ def create_resolution_endpoint(
             derived = derive_resolution_fields(text)
             classified_type = derived.type
 
+            category = infer_category(classified_type)
             resolution = Resolution(
                 user_id=user_id,
                 title=derived.title,
                 type=classified_type,
+                category=category,
                 duration_weeks=duration_weeks,
                 status="draft",
                 metadata_json={"raw_text": text},
@@ -97,6 +100,7 @@ def create_resolution_endpoint(
         title=resolution.title,
         raw_text=text,
         type=resolution.type,
+        category=resolution.category or infer_category(resolution.type),
         duration_weeks=resolution.duration_weeks,
         status=resolution.status,
         request_id=request_id or "",

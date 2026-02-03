@@ -14,17 +14,30 @@ import { useNavigation } from "@react-navigation/native";
 import { fetchDashboard, DashboardResolution } from "../api/dashboard";
 import { useUserId } from "../state/user";
 import type { RootStackParamList } from "../../types/navigation";
+import { useTheme } from "../theme";
+import type { ThemeTokens } from "../theme";
 
 type DashboardNavProp = NativeStackNavigationProp<RootStackParamList, "Dashboard">;
 
 export default function ResolutionDashboardScreen() {
   const navigation = useNavigation<DashboardNavProp>();
   const { userId, loading: userLoading } = useUserId();
+  const { theme } = useTheme();
   const [dashboard, setDashboard] = useState<DashboardResolution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  const backgroundColor = theme.background;
+  const surface = theme.card;
+  const surfaceMuted = theme.surfaceMuted;
+  const textPrimary = theme.textPrimary;
+  const textSecondary = theme.textSecondary;
+  const borderColor = theme.border;
+  const accent = theme.accent;
+  const shadowColor = theme.shadow;
+  const heroBackground = theme.heroPrimary;
 
   const loadDashboard = async () => {
     if (!userId) return;
@@ -80,19 +93,19 @@ export default function ResolutionDashboardScreen() {
 
   if (userLoading || (loading && !dashboard.length)) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#6B8DBF" />
-        <Text style={styles.helper}>Gathering insights…</Text>
+      <View style={[styles.center, { backgroundColor }]}>
+        <ActivityIndicator color={accent} />
+        <Text style={[styles.helper, { color: textSecondary }]}>Gathering insights…</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{error}</Text>
-        <TouchableOpacity style={styles.retry} onPress={loadDashboard}>
-          <Text style={styles.retryText}>Try again</Text>
+      <View style={[styles.center, { backgroundColor }]}>
+        <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>
+        <TouchableOpacity style={[styles.retry, { borderColor: accent }]} onPress={loadDashboard}>
+          <Text style={[styles.retryText, { color: accent }]}>Try again</Text>
         </TouchableOpacity>
       </View>
     );
@@ -100,10 +113,15 @@ export default function ResolutionDashboardScreen() {
 
   if (!dashboard.length) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.emptyTitle}>No active resolutions</Text>
-        <Text style={styles.helper}>Create a resolution to start tracking progress and coaching insights.</Text>
-        <TouchableOpacity style={styles.ctaButton} onPress={() => navigation.navigate("ResolutionCreate")}>
+      <View style={[styles.center, { backgroundColor }]}>
+        <Text style={[styles.emptyTitle, { color: textPrimary }]}>No active resolutions</Text>
+        <Text style={[styles.helper, { color: textSecondary }]}>
+          Create a resolution to start tracking progress and coaching insights.
+        </Text>
+        <TouchableOpacity
+          style={[styles.ctaButton, { backgroundColor: accent }]}
+          onPress={() => navigation.navigate("ResolutionCreate")}
+        >
           <Text style={styles.ctaText}>Create Resolution</Text>
         </TouchableOpacity>
       </View>
@@ -112,12 +130,14 @@ export default function ResolutionDashboardScreen() {
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      style={{ backgroundColor }}
+      contentContainerStyle={[styles.container, { backgroundColor }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
+      showsVerticalScrollIndicator={false}
     >
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Weekly Overview</Text>
-        <Text style={styles.summaryStat}>
+      <View style={[styles.summaryCard, { backgroundColor: heroBackground, shadowColor }]}>
+        <Text style={[styles.summaryTitle, { color: "#E0E7FF" }]}>Weekly Overview</Text>
+        <Text style={[styles.summaryStat, { color: "#fff" }]}>
           {summary.completed}/{summary.scheduled} Tasks
         </Text>
         <View style={styles.summaryBar}>
@@ -126,87 +146,117 @@ export default function ResolutionDashboardScreen() {
               styles.summaryFill,
               {
                 width: `${Math.min(100, Math.round(summary.rate * 100))}%`,
-                backgroundColor: summary.rate >= 0.6 ? "#48BB78" : "#ECC94B",
+                backgroundColor: summary.rate >= 0.6 ? theme.success : theme.warning,
               },
             ]}
           />
         </View>
       </View>
-      <Text style={styles.headerTitle}>Focus Areas</Text>
+      <Text style={[styles.headerTitle, { color: textPrimary }]}>Focus Areas</Text>
       {sortedResolutions.map((resolution) => {
         const completionPercent = Math.round(resolution.completion_rate * 100);
-        const badge = getStatusBadge(completionPercent);
+        const badge = getStatusBadge(completionPercent, theme);
         const latestActivity = resolution.recent_activity[0];
         const duration = resolution.duration_weeks ?? "—";
         const currentWeek =
           typeof duration === "number"
             ? Math.min(duration, Math.max(1, Math.round(resolution.completion_rate * duration) || 1))
             : "—";
+        const isWarning = resolution.completion_rate < 0.6;
+        const warningBackground = theme.mode === "dark" ? "rgba(250,204,21,0.08)" : "#FFF7ED";
+        const warningBorder = theme.mode === "dark" ? "rgba(250,204,21,0.4)" : "#FED7AA";
         return (
           <TouchableOpacity
             key={resolution.resolution_id}
             style={[
               styles.card,
+              {
+                backgroundColor: surface,
+                borderColor,
+                shadowColor,
+              },
               resolution.completion_rate >= 1 && styles.cardComplete,
-              resolution.completion_rate < 0.6 && styles.cardWarning,
+              isWarning && { backgroundColor: warningBackground, borderColor: warningBorder },
             ]}
             onPress={() => navigation.navigate("ResolutionDashboardDetail", { resolutionId: resolution.resolution_id })}
           >
             <View style={styles.cardHeader}>
               <View style={styles.cardTitleWrapper}>
-                <Text style={styles.title}>{resolution.title}</Text>
+                <Text style={[styles.title, { color: textPrimary }]}>{resolution.title}</Text>
               </View>
-              <View style={[styles.badge, badge.style]}>
-                <Text style={[styles.badgeText, badge.textStyle]}>{badge.label}</Text>
+              <View style={[styles.badge, { backgroundColor: badge.backgroundColor }]}>
+                <Text style={[styles.badgeText, { color: badge.textColor }]}>{badge.label}</Text>
               </View>
             </View>
             <View style={styles.progressRow}>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${completionPercent}%` }]} />
+              <View style={[styles.progressBar, { backgroundColor: surfaceMuted }]}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${completionPercent}%`,
+                      backgroundColor: accent,
+                    },
+                  ]}
+                />
               </View>
             </View>
             <View style={styles.statsRow}>
-              <Text style={styles.meta}>
+              <Text style={[styles.meta, { color: textSecondary }]}>
                 {resolution.tasks.completed}/{resolution.tasks.total} Tasks
               </Text>
-              <Text style={styles.meta}>
+              <Text style={[styles.meta, { color: textSecondary }]}>
                 Week {currentWeek} of {duration}
               </Text>
             </View>
             {latestActivity ? (
-              <View style={styles.activityCard}>
-                <Text style={styles.activityLabel}>Latest Update</Text>
-                <Text style={styles.activityTitle}>{latestActivity.title}</Text>
+              <View style={[styles.activityCard, { backgroundColor: surfaceMuted }]}>
+                <Text style={[styles.activityLabel, { color: textPrimary }]}>Latest Update</Text>
+                <Text style={[styles.activityTitle, { color: textPrimary }]}>{latestActivity.title}</Text>
                 {latestActivity.completed_at ? (
-                  <Text style={styles.activityMeta}>{new Date(latestActivity.completed_at).toLocaleString()}</Text>
+                  <Text style={[styles.activityMeta, { color: textSecondary }]}>
+                    {new Date(latestActivity.completed_at).toLocaleString()}
+                  </Text>
                 ) : null}
               </View>
             ) : (
-              <View style={styles.activityCard}>
-                <Text style={styles.activityLabel}>Latest Update</Text>
-                <Text style={styles.helper}>No recent updates yet.</Text>
+              <View style={[styles.activityCard, { backgroundColor: surfaceMuted }]}>
+                <Text style={[styles.activityLabel, { color: textPrimary }]}>Latest Update</Text>
+                <Text style={[styles.helper, { color: textSecondary }]}>No recent updates yet.</Text>
               </View>
             )}
           </TouchableOpacity>
         );
       })}
       {requestId ? (
-        <View style={styles.debugCard}>
-          <Text style={styles.debugLabel}>request_id: {requestId}</Text>
+        <View style={[styles.debugCard, { borderColor, backgroundColor: surface }]}>
+          <Text style={[styles.debugLabel, { color: textSecondary }]}>request_id: {requestId}</Text>
         </View>
       ) : null}
     </ScrollView>
   );
 }
 
-function getStatusBadge(percent: number) {
+function getStatusBadge(percent: number, theme: ThemeTokens) {
   if (percent >= 80) {
-    return { label: "On Track", style: styles.badgeGreen, textStyle: styles.badgeGreenText };
+    return {
+      label: "On Track",
+      backgroundColor: theme.mode === "dark" ? "rgba(74,222,128,0.2)" : "#DCFCE7",
+      textColor: theme.mode === "dark" ? theme.success : "#15803D",
+    };
   }
   if (percent < 50) {
-    return { label: "Needs Focus", style: styles.badgeAmber, textStyle: styles.badgeAmberText };
+    return {
+      label: "Needs Focus",
+      backgroundColor: theme.mode === "dark" ? "rgba(250,204,21,0.2)" : "#FEF3C7",
+      textColor: theme.mode === "dark" ? theme.warning : "#B45309",
+    };
   }
-  return { label: "Steady", style: styles.badgeBlue, textStyle: styles.badgeBlueText };
+  return {
+    label: "Steady",
+    backgroundColor: theme.mode === "dark" ? theme.accentSoft : "#DBEAFE",
+    textColor: theme.accent,
+  };
 }
 
 const styles = StyleSheet.create({
@@ -265,10 +315,6 @@ const styles = StyleSheet.create({
   cardComplete: {
     opacity: 0.6,
   },
-  cardWarning: {
-    borderColor: "#FED7AA",
-    backgroundColor: "#FFF7ED",
-  },
   headerTitle: {
     fontSize: 30,
     color: "#2D3748",
@@ -297,24 +343,6 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontWeight: "600",
-  },
-  badgeGreen: {
-    backgroundColor: "#DCFCE7",
-  },
-  badgeGreenText: {
-    color: "#15803D",
-  },
-  badgeBlue: {
-    backgroundColor: "#DBEAFE",
-  },
-  badgeBlueText: {
-    color: "#1D4ED8",
-  },
-  badgeAmber: {
-    backgroundColor: "#FEF3C7",
-  },
-  badgeAmberText: {
-    color: "#B45309",
   },
   progressRow: {
     marginTop: 8,
