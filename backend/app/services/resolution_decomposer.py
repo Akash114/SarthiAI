@@ -502,6 +502,7 @@ def decompose_resolution_with_llm(
     sanitized_weeks = max(4, min(12, duration_weeks))
     band_label = effort_band or "medium"
     band_rationale = band_rationale or "Defaulted effort band."
+    domain_label = (resolution_domain or "personal").lower()
     trace_metadata = {
         "band": band_label,
         "resolution_type": resolution_type or "unspecified",
@@ -511,7 +512,6 @@ def decompose_resolution_with_llm(
     trace_metadata["domain"] = domain_label
     trace_metadata["category"] = resolution_category or "unspecified"
 
-    domain_label = (resolution_domain or "personal").lower()
     availability = sanitize_availability_profile(availability_profile)
     refined_goal = _refine_resolution_goal(user_input, resolution_type)
     planning_context = dict(user_context or {})
@@ -541,7 +541,15 @@ def decompose_resolution_with_llm(
             trace_metadata,
             refined_goal,
         )
-        return _finalize_plan(plan_dict, evaluation, band_label, band_rationale, repair_used=False, fallback_used=True)
+        return _finalize_plan(
+            plan_dict,
+            evaluation,
+            band_label,
+            band_rationale,
+            repair_used=False,
+            regenerate_used=False,
+            fallback_used=True,
+        )
 
     system_prompt, base_user_prompt = _build_prompts(
         user_input=user_input,
@@ -1204,6 +1212,8 @@ def _fallback_plan(
         user_context,
         repeat_daily=False,
     )
+    if len(enriched_tasks) > 4:
+        enriched_tasks = enriched_tasks[:4]
 
     week_sections = [
         PlanWeekSection(

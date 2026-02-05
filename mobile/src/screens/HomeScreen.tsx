@@ -344,28 +344,45 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-            <View style={styles.greetingBlock}>
+            <View style={[styles.heroPanel, { backgroundColor: theme.surface }]}>
               <Text style={[styles.greeting, { color: textPrimary }]}>{greeting}, Alex</Text>
               <Text style={[styles.greetingSubtitle, { color: textSecondary }]}>{subtitleDate}</Text>
-              <Text style={[styles.greetingHint, { color: textSecondary }]}>Stay present. We'll keep the logistics light.</Text>
-            </View>
-            <View style={[styles.contextToggleRow, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
-              {CONTEXT_SEGMENTS.map((option) => {
-                const active = activeContext === option.key;
-                return (
-                  <TouchableOpacity
-                    key={option.key}
-                    style={[styles.contextToggleButton, active && styles.contextToggleButtonActive]}
-                    onPress={() => handleContextSelection(option.key)}
-                    activeOpacity={0.9}
-                  >
-                    <Text style={[styles.contextToggleText, active && styles.contextToggleTextActive]}>
-                      {`${option.icon} ${option.label}`}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+              <Text style={[styles.greetingHint, { color: textSecondary }]}>We shaped today so you can stay present.</Text>
+
+              <View style={[styles.contextToggleRow, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+                {CONTEXT_SEGMENTS.map((option) => {
+                  const active = activeContext === option.key;
+                  return (
+                    <TouchableOpacity
+                      key={option.key}
+                      style={[styles.contextToggleButton, active && styles.contextToggleButtonActive]}
+                      onPress={() => handleContextSelection(option.key)}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={[styles.contextToggleText, active && styles.contextToggleTextActive]}>
+                        {`${option.icon} ${option.label}`}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.heroStatsRow}>
+                <View style={styles.heroStat}>
+                  <Text style={[styles.heroStatLabel, { color: textSecondary }]}>Remaining</Text>
+                  <Text style={[styles.heroStatValue, { color: textPrimary }]}>{remainingTasks.length}</Text>
+                </View>
+                <View style={styles.heroDivider} />
+                <View style={styles.heroStat}>
+                  <Text style={[styles.heroStatLabel, { color: textSecondary }]}>Completed</Text>
+                  <Text style={[styles.heroStatValue, { color: textPrimary }]}>{completedTasks.length}</Text>
+                </View>
+                <View style={styles.heroDivider} />
+                <View style={styles.heroStat}>
+                  <Text style={[styles.heroStatLabel, { color: textSecondary }]}>Focus</Text>
+                  <Text style={[styles.heroStatValue, { color: contextAccent }]}>{activeContext === "work" ? "Work" : "Personal"}</Text>
+                </View>
+              </View>
 
               <View style={styles.quickActionsRow}>
                 {quickActions.map((action) => (
@@ -374,18 +391,18 @@ export default function HomeScreen() {
                     style={[
                       styles.quickAction,
                       {
-                        backgroundColor: quickActionBg,
                         shadowColor: quickActionShadow,
                       },
                     ]}
                     onPress={action.onPress}
-                    activeOpacity={0.85}
+                    activeOpacity={0.9}
                   >
-                    {action.icon}
+                    <View style={[styles.quickActionIcon, { backgroundColor: quickActionBg }]}>{action.icon}</View>
                     <Text style={[styles.quickActionText, { color: quickActionText }]}>{action.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
+            </View>
 
           {error ? <Text style={[styles.errorText, { color: errorColor }]}>{error}</Text> : null}
 
@@ -841,8 +858,16 @@ const createStyles = (theme: ThemeTokens, accentColor: string) => {
       borderWidth: 1,
       borderColor: theme.border,
     },
-    greetingBlock: {
+    heroPanel: {
+      borderRadius: 24,
+      padding: 20,
       marginBottom: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+      shadowColor: theme.shadow,
+      shadowOpacity: 0.08,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 8 },
     },
     greeting: {
       fontSize: 26,
@@ -858,6 +883,32 @@ const createStyles = (theme: ThemeTokens, accentColor: string) => {
       color: theme.textSecondary,
       marginTop: 4,
     },
+    heroStatsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 16,
+      marginBottom: 12,
+    },
+    heroStat: {
+      flex: 1,
+      alignItems: "center",
+      gap: 4,
+    },
+    heroStatLabel: {
+      fontSize: 12,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+    },
+    heroStatValue: {
+      fontSize: 18,
+      fontWeight: "700",
+    },
+    heroDivider: {
+      width: 1,
+      height: 32,
+      backgroundColor: theme.border,
+    },
     quickActionsRow: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -867,16 +918,24 @@ const createStyles = (theme: ThemeTokens, accentColor: string) => {
     quickAction: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      paddingVertical: 10,
-      paddingHorizontal: 14,
-      borderRadius: 999,
+      gap: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 18,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: theme.border,
       backgroundColor: theme.surface,
-      shadowColor: theme.shadow,
-      shadowOpacity: 0.2,
-      shadowRadius: 6,
-      shadowOffset: { width: 0, height: 3 },
-      elevation: 2,
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 3,
+    },
+    quickActionIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
     },
     quickActionText: {
       fontWeight: "600",

@@ -35,6 +35,7 @@ export default function ResolutionCreateScreen() {
   const [customVisible, setCustomVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [domain, setDomain] = useState<"personal" | "work">("personal");
 
   const trimmed = text.trim();
   const durationNumber = duration ? Number(duration) : undefined;
@@ -70,6 +71,7 @@ export default function ResolutionCreateScreen() {
         user_id: userId,
         text: trimmed,
         duration_weeks: durationNumber,
+        domain,
       });
       navigation.navigate("PlanReview", { resolutionId: resolution.id, initialResolution: resolution });
     } catch (err) {
@@ -102,6 +104,27 @@ export default function ResolutionCreateScreen() {
         <Text style={[styles.helperText, { color: theme.textSecondary }]}>
           Add a focus area in your own words. We’ll keep it gentle and collaborative.
         </Text>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>Focus context</Text>
+        <View style={styles.contextRow}>
+          {["personal", "work"].map((value) => {
+            const active = domain === value;
+            return (
+              <TouchableOpacity
+                key={value}
+                style={[styles.contextButton, active && styles.contextButtonActive]}
+                onPress={() => setDomain(value as "personal" | "work")}
+                disabled={loading}
+              >
+                <Text style={[styles.contextText, active && styles.contextTextActive]}>
+                  {value === "personal" ? "Personal flow" : "Work sprint"}
+                </Text>
+                <Text style={[styles.contextHelper, { color: active ? theme.surface : theme.textSecondary }]}>
+                  {value === "personal" ? "Before/after work hours" : "Within work hours"}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <Text style={[styles.label, { color: theme.textSecondary }]}>What is your main goal?</Text>
         <View style={[styles.inputCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
@@ -306,6 +329,35 @@ const createStyles = (theme: ThemeTokens) => {
     },
     pillTextActive: {
       color: accentForeground,
+    },
+    contextRow: {
+      flexDirection: "row",
+      gap: 12,
+      marginVertical: 12,
+    },
+    contextButton: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 16,
+      padding: 12,
+      backgroundColor: theme.card,
+    },
+    contextButtonActive: {
+      backgroundColor: theme.accent,
+      borderColor: theme.accent,
+    },
+    contextText: {
+      fontWeight: "600",
+      color: theme.textPrimary,
+    },
+    contextTextActive: {
+      color: accentForeground,
+    },
+    contextHelper: {
+      fontSize: 12,
+      marginTop: 4,
+      color: theme.textSecondary,
     },
     helperSmall: {
       marginTop: 6,
