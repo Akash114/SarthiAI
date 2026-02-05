@@ -68,6 +68,10 @@ def test_get_preferences_creates_defaults(client):
     assert data["coaching_paused"] is False
     assert data["weekly_plans_enabled"] is True
     assert data["interventions_enabled"] is True
+    assert data["availability_profile"]["work_days"]
+    assert data["availability_profile"]["peak_energy"] in {"morning", "evening"}
+    assert data["availability_profile"]["work_mode_enabled"] is False
+    assert data["availability_profile"]["personal_slots"]["fitness"]
     assert data["request_id"]
 
 
@@ -78,11 +82,30 @@ def test_patch_updates_and_logs(client):
     test_client.get("/preferences", params={"user_id": str(user_id)})
     resp = test_client.patch(
         "/preferences",
-        json={"user_id": str(user_id), "coaching_paused": True},
+        json={
+            "user_id": str(user_id),
+            "coaching_paused": True,
+            "availability_profile": {
+                "work_days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+                "work_start": "08:00",
+                "work_end": "17:00",
+                "peak_energy": "evening",
+                "work_mode_enabled": True,
+                "personal_slots": {
+                    "fitness": "evening",
+                    "learning": "morning",
+                    "admin": "evenings",
+                },
+            },
+        },
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["coaching_paused"] is True
+    assert data["availability_profile"]["work_start"] == "08:00"
+    assert data["availability_profile"]["peak_energy"] == "evening"
+    assert data["availability_profile"]["work_mode_enabled"] is True
+    assert data["availability_profile"]["personal_slots"]["learning"] == "morning"
     assert data["request_id"]
 
     session = session_factory()

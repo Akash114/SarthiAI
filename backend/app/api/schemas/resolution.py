@@ -15,6 +15,7 @@ class ResolutionCreateRequest(BaseModel):
     user_id: UUID
     text: str = Field(..., min_length=5, max_length=300)
     duration_weeks: Optional[int] = Field(default=None, ge=1, le=52)
+    domain: Literal["personal", "work"] = "personal"
 
     @field_validator("text")
     @classmethod
@@ -32,6 +33,7 @@ class ResolutionResponse(BaseModel):
     raw_text: str
     type: Literal["habit", "project", "learning", "health", "finance", "other"]
     category: str
+    domain: Literal["personal", "work"]
     duration_weeks: Optional[int]
     status: Literal["draft"]
     request_id: str
@@ -42,6 +44,7 @@ class ResolutionSummary(BaseModel):
     title: str
     type: str
     category: Optional[str]
+    domain: str
     status: str
     duration_weeks: Optional[int]
     updated_at: datetime
@@ -53,6 +56,7 @@ class ResolutionDetailResponse(BaseModel):
     title: str
     type: str
     category: Optional[str]
+    domain: str
     status: str
     duration_weeks: Optional[int]
     plan: Optional[PlanPayload] = None

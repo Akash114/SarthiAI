@@ -19,6 +19,7 @@ from app.api.schemas.decomposition import (
 )
 from app.db.deps import get_db
 from app.db.models.resolution import Resolution
+from app.db.models.user import User
 from app.db.models.task import Task
 from app.observability.metrics import log_metric
 from app.observability.tracing import trace
@@ -54,11 +55,15 @@ def decompose_resolution_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resolution not found")
 
     request_id = getattr(http_request.state, "request_id", None)
+    user = db.get(User, resolution.user_id)
+    availability_profile = getattr(user, "availability_profile", None) if user else None
+    resolution_domain = (resolution.domain or "personal") if hasattr(resolution, "domain") else "personal"
     metadata = dict(resolution.metadata_json or {})
     user_text = metadata.get("original_text") or metadata.get("raw_text") or resolution.title
     plan_weeks = _resolve_plan_weeks(params.weeks, resolution.duration_weeks)
     effort_band, band_rationale = infer_effort_band(user_text, resolution.type, plan_weeks)
     regenerate = params.regenerate
+    resolution_category = resolution.category or metadata.get("category")
 
     base_metadata: Dict[str, Any] = {
         "route": f"/resolutions/{resolution_id}/decompose",
@@ -107,10 +112,13 @@ def decompose_resolution_endpoint(
                     user_text,
                     plan_weeks,
                     resolution_type=resolution.type,
+                    resolution_category=resolution_category,
                     user_context=metadata.get("user_context"),
                     effort_band=effort_band,
                     band_rationale=band_rationale,
                     request_id=request_id,
+                    resolution_domain=resolution_domain,
+                    availability_profile=availability_profile,
                 )
                 metadata["plan_v1"] = plan_dict
                 metadata["why_this"] = plan_dict.get("why_this_matters")

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Calendar, Shield, Power, PauseCircle, FileText, Bell } from "lucide-react-native";
+import { Calendar, Shield, Power, PauseCircle, FileText, Bell, Sparkles } from "lucide-react-native";
 import { getPreferences, updatePreferences, PreferencesResponse } from "../api/preferences";
 import { useUserId } from "../state/user";
 import type { RootStackParamList } from "../../types/navigation";
@@ -201,7 +201,27 @@ export default function SettingsPermissionsScreen() {
               <View style={[styles.systemIcon, { backgroundColor: theme.surfaceMuted }]}>
                 <FileText size={18} color={theme.textPrimary} />
               </View>
-              <Text style={[styles.systemText, { color: theme.textPrimary }]}>View Agent Log</Text>
+              <View style={styles.notificationText}>
+                <Text style={[styles.systemText, { color: theme.textPrimary }]}>Agent Log</Text>
+                <Text style={[styles.notificationHelper, { color: theme.textSecondary }]}>
+                  See every autonomous action.
+                </Text>
+              </View>
+              <Text style={[styles.chevron, { color: theme.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.systemRow, { borderColor: theme.border }]}
+              onPress={() => navigation.navigate("Personalization")}
+            >
+              <View style={[styles.systemIcon, { backgroundColor: theme.surfaceMuted }]}>
+                <Sparkles size={18} color={theme.textPrimary} />
+              </View>
+              <View style={styles.notificationText}>
+                <Text style={[styles.systemText, { color: theme.textPrimary }]}>Personalize your flow</Text>
+                <Text style={[styles.notificationHelper, { color: theme.textSecondary }]}>
+                  Tell Sarathi your schedule & energy peaks.
+                </Text>
+              </View>
               <Text style={[styles.chevron, { color: theme.textSecondary }]}>›</Text>
             </TouchableOpacity>
           </View>

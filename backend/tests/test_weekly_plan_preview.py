@@ -134,6 +134,9 @@ def test_weekly_plan_preview_with_data(client):
     assert payload["inputs"]["active_tasks_total"] == 3
     # completion approx 0.33
     assert abs(payload["inputs"]["completion_rate"] - 0.33) < 0.01 or payload["inputs"]["completion_rate"] in (0.33, 0.34)
+    assert payload["inputs"]["primary_focus_resolution_id"] == str(resolution.id)
+    assert len(payload["inputs"]["resolution_stats"]) == 1
+    assert payload["inputs"]["resolution_stats"][0]["resolution_id"] == str(resolution.id)
     assert payload["micro_resolution"]["title"]
     assert payload["micro_resolution"]["suggested_week_1_tasks"]
 
@@ -147,4 +150,6 @@ def test_weekly_plan_preview_handles_empty_user(client):
     payload = resp.json()
     assert payload["inputs"]["active_resolutions"] == 0
     assert payload["inputs"]["completion_rate"] == 0
+    assert payload["inputs"]["resolution_stats"] == []
+    assert payload["inputs"]["primary_focus_resolution_id"] is None
     assert payload["micro_resolution"]["title"]

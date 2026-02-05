@@ -9,7 +9,7 @@ import {
   View,
   Platform,
 } from "react-native";
-import { Sun, Circle } from "lucide-react-native";
+import { Sun, Circle, TrendingUp, Target } from "lucide-react-native";
 import { getWeeklyPlanLatest, runWeeklyPlan, WeeklyPlanResponse } from "../api/weeklyPlan";
 import { useUserId } from "../state/user";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
@@ -123,6 +123,11 @@ export default function WeeklyPlanScreen() {
   }
 
   const dateLabel = plan ? formatRange(plan.week.start, plan.week.end) : "";
+  const resolutionStats = plan?.inputs.resolution_stats ?? [];
+  const focusResolutionId = plan?.inputs.primary_focus_resolution_id ?? null;
+  const focusResolution = focusResolutionId
+    ? resolutionStats.find((stat) => stat.resolution_id === focusResolutionId)
+    : null;
 
   return (
     <ScrollView
@@ -162,6 +167,46 @@ export default function WeeklyPlanScreen() {
             <Text style={styles.focusTitle}>{plan.micro_resolution.title}</Text>
             <Text style={styles.focusBody}>{plan.micro_resolution.why_this}</Text>
           </View>
+
+          {resolutionStats.length ? (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Where Your Plans Stand</Text>
+            </View>
+          ) : null}
+          {resolutionStats.length ? (
+            <View style={styles.statCard}>
+              {resolutionStats.map((stat, index) => {
+                const completionPct = Math.round(stat.completion_rate * 100);
+                const focus = stat.resolution_id === focusResolutionId;
+                return (
+                  <View
+                    key={stat.resolution_id}
+                    style={[styles.statRow, index > 0 && styles.statRowDivider]}
+                  >
+                    <View style={styles.statLabelBlock}>
+                      {focus ? <Target size={16} color={theme.accent} /> : <TrendingUp size={16} color={theme.textSecondary} />}
+                      <Text style={[styles.statTitle, focus && styles.statTitleFocus]}>{stat.title}</Text>
+                      <Text style={styles.statDomain}>{stat.domain === "work" ? "Work" : "Personal"}</Text>
+                    </View>
+                    <View style={styles.statValues}>
+                      <Text style={[styles.statCompletion, focus && styles.statTitleFocus]}>{completionPct}%</Text>
+                      <Text style={styles.statMeta}>{stat.tasks_completed}/{stat.tasks_total || 0} done</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {focusResolution ? (
+            <View style={styles.focusReasonCard}>
+              <Text style={styles.focusReasonTitle}>This week focuses on {focusResolution.title}</Text>
+              <Text style={styles.focusReasonBody}>
+                Completion dipped to {Math.round(focusResolution.completion_rate * 100)}%, so Sarathi lightened the plan and
+                scheduled tasks in your {focusResolution.domain === "work" ? "work" : "recharge"} windows.
+              </Text>
+            </View>
+          ) : null}
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Suggested Actions</Text>
@@ -299,6 +344,80 @@ const createStyles = (theme: ThemeTokens) => {
       fontSize: 18,
       fontWeight: "600",
       color: theme.textPrimary,
+    },
+    statCard: {
+      backgroundColor: theme.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      gap: 12,
+      shadowColor: theme.shadow,
+      shadowOpacity: 0.05,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+    },
+    statRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    statRowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.border,
+      paddingTop: 12,
+      marginTop: 12,
+    },
+    statLabelBlock: {
+      flex: 1,
+      gap: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+    },
+    statTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: theme.textPrimary,
+    },
+    statTitleFocus: {
+      color: theme.accent,
+    },
+    statDomain: {
+      fontSize: 12,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      color: theme.textSecondary,
+    },
+    statValues: {
+      alignItems: "flex-end",
+    },
+    statCompletion: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: theme.textPrimary,
+    },
+    statMeta: {
+      color: theme.textSecondary,
+      fontSize: 12,
+    },
+    focusReasonCard: {
+      marginTop: 12,
+      borderRadius: 16,
+      padding: 16,
+      backgroundColor: theme.surfaceMuted,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    focusReasonTitle: {
+      fontWeight: "700",
+      color: theme.textPrimary,
+      marginBottom: 6,
+    },
+    focusReasonBody: {
+      color: theme.textSecondary,
+      lineHeight: 18,
     },
     taskRow: {
       flexDirection: "row",

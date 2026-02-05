@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View, Platform } from "react-native";
+import { Target, TrendingUp } from "lucide-react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { getWeeklyPlanHistoryItem, WeeklyPlanResponse } from "../api/weeklyPlan";
@@ -49,6 +50,12 @@ export default function WeeklyPlanHistoryDetailScreen({ route }: Props) {
     );
   }
 
+  const resolutionStats = snapshot.inputs?.resolution_stats ?? [];
+  const focusResolutionId = snapshot.inputs?.primary_focus_resolution_id ?? null;
+  const focusResolution = focusResolutionId
+    ? resolutionStats.find((stat) => stat.resolution_id === focusResolutionId)
+    : null;
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.heroCard}>
@@ -61,6 +68,43 @@ export default function WeeklyPlanHistoryDetailScreen({ route }: Props) {
         <Text style={styles.sectionLabel}>Focus</Text>
         <Text style={styles.body}>{snapshot.micro_resolution.why_this}</Text>
       </View>
+
+      {resolutionStats.length ? (
+        <>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Resolution Stats</Text>
+          </View>
+          <View style={styles.statCard}>
+            {resolutionStats.map((stat, index) => {
+              const completionPct = Math.round(stat.completion_rate * 100);
+              const focus = stat.resolution_id === focusResolutionId;
+              return (
+                <View key={stat.resolution_id} style={[styles.statRow, index > 0 && styles.statRowDivider]}>
+                  <View style={styles.statLabelBlock}>
+                    {focus ? <Target size={16} color={theme.accent} /> : <TrendingUp size={16} color={theme.textSecondary} />}
+                    <Text style={[styles.statTitle, focus && styles.statTitleFocus]}>{stat.title}</Text>
+                    <Text style={styles.statDomain}>{stat.domain === "work" ? "Work" : "Personal"}</Text>
+                  </View>
+                  <View style={styles.statValues}>
+                    <Text style={[styles.statCompletion, focus && styles.statTitleFocus]}>{completionPct}%</Text>
+                    <Text style={styles.statMeta}>{stat.tasks_completed}/{stat.tasks_total || 0} done</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+
+      {focusResolution ? (
+        <View style={styles.focusReasonCard}>
+          <Text style={styles.statTitle}>Focus was on {focusResolution.title}</Text>
+          <Text style={styles.focusReasonBody}>
+            Completion sat at {Math.round(focusResolution.completion_rate * 100)}%, so the coach tailored Week {snapshot.week.start} to
+            rebuild momentum in your {focusResolution.domain === "work" ? "work" : "personal"} hours.
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Suggested Actions</Text>
@@ -137,6 +181,71 @@ const createStyles = (theme: ThemeTokens) =>
       fontSize: 18,
       fontWeight: "600",
       color: theme.textPrimary,
+    },
+    statCard: {
+      backgroundColor: theme.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      gap: 12,
+    },
+    statRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    statRowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.border,
+      paddingTop: 12,
+      marginTop: 12,
+    },
+    statLabelBlock: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      flexWrap: "wrap",
+    },
+    statTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: theme.textPrimary,
+    },
+    statTitleFocus: {
+      color: theme.accent,
+    },
+    statDomain: {
+      fontSize: 12,
+      letterSpacing: 1,
+      color: theme.textSecondary,
+      textTransform: "uppercase",
+    },
+    statValues: {
+      alignItems: "flex-end",
+    },
+    statCompletion: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: theme.textPrimary,
+    },
+    statMeta: {
+      fontSize: 12,
+      color: theme.textSecondary,
+    },
+    focusReasonCard: {
+      marginTop: 12,
+      borderRadius: 16,
+      padding: 16,
+      backgroundColor: theme.surfaceMuted,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    focusReasonBody: {
+      color: theme.textSecondary,
+      marginTop: 6,
+      lineHeight: 18,
     },
     taskRow: {
       backgroundColor: theme.card,

@@ -12,6 +12,7 @@ export type TaskItem = {
   created_at: string;
   updated_at: string;
   source: string;
+  domain?: "personal" | "work";
 };
 
 export type TaskUpdateResponse = {

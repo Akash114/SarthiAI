@@ -47,6 +47,7 @@ def update_preferences_endpoint(payload: PreferencesUpdateRequest, request: Requ
                 coaching_paused=payload.coaching_paused,
                 weekly_plans_enabled=payload.weekly_plans_enabled,
                 interventions_enabled=payload.interventions_enabled,
+                availability_profile=payload.availability_profile.model_dump() if payload.availability_profile else None,
                 request_id=request_id,
             )
         except ValueError:
@@ -64,5 +65,6 @@ def _serialize_preferences(prefs, request_id: str | None) -> PreferencesResponse
         coaching_paused=bool(prefs.coaching_paused),
         weekly_plans_enabled=bool(prefs.weekly_plans_enabled),
         interventions_enabled=bool(prefs.interventions_enabled),
+        availability_profile=prefs.availability_profile,
         request_id=request_id or "",
     )

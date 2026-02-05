@@ -199,6 +199,12 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
     gap: 12,
   },
+  subtitle: {
+    color: "#4A5568",
+    fontSize: 14,
+    fontWeight: "500",
+    marginBottom: 8,
+  },
   input: {
     minHeight: 200,
     backgroundColor: "#FFFFFF",

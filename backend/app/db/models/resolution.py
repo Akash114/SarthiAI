@@ -18,6 +18,7 @@ class Resolution(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title = Column(Text, nullable=False)
     type = Column(String(length=50), nullable=False)
+    domain = Column(String(length=20), nullable=False, server_default=sa_text("'personal'"), default="personal")
     duration_weeks = Column(Integer, nullable=True)
     category = Column(String(length=50), nullable=True)
     status = Column(String(length=50), nullable=False, server_default=sa_text("'draft'"))

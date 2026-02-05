@@ -14,6 +14,7 @@ import MyWeekScreen from "./src/screens/MyWeekScreen";
 import ResolutionDashboardScreen from "./src/screens/ResolutionDashboardScreen";
 import ResolutionDashboardDetailScreen from "./src/screens/ResolutionDashboardDetailScreen";
 import SettingsPermissionsScreen from "./src/screens/SettingsPermissionsScreen";
+import PersonalizationScreen from "./src/screens/PersonalizationScreen";
 import AgentLogScreen from "./src/screens/AgentLogScreen";
 import AgentLogDetailScreen from "./src/screens/AgentLogDetailScreen";
 import WeeklyPlanScreen from "./src/screens/WeeklyPlanScreen";
@@ -82,6 +83,11 @@ function Navigator() {
           name="SettingsPermissions"
           component={SettingsPermissionsScreen}
           options={{ title: "Settings & Permissions" }}
+        />
+        <Stack.Screen
+          name="Personalization"
+          component={PersonalizationScreen}
+          options={{ title: "Personalize Flow" }}
         />
         <Stack.Screen name="AgentLog" component={AgentLogScreen} options={{ title: "Agent Log" }} />
         <Stack.Screen

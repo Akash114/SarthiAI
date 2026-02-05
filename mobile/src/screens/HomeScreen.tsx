@@ -9,6 +9,7 @@ import * as tasksApi from "../api/tasks";
 import type { TaskItem } from "../api/tasks";
 import * as journeyApi from "../api/journey";
 import type { JourneyCategory } from "../api/journey";
+import { getPreferences, type AvailabilityProfile } from "../api/preferences";
 import { TaskCard } from "../components/TaskCard";
 import DailyJourneyWidget from "../components/DailyJourneyWidget";
 import { useUserId } from "../state/user";
@@ -25,7 +26,14 @@ const PRAISE_MESSAGES = [
   "Nice work!",
 ];
 
+const DEFAULT_MANUAL_OVERRIDE_MS = 30 * 60 * 1000;
+
 type HomeNavigation = NativeStackNavigationProp<RootStackParamList, "Home">;
+
+const CONTEXT_SEGMENTS = [
+  { key: "personal", label: "Personal", icon: "🏠" },
+  { key: "work", label: "Work", icon: "💼" },
+] as const;
 
 interface Task {
   id: string;
@@ -35,6 +43,7 @@ interface Task {
   scheduled_time?: string;
   duration_min: number | null;
   source_resolution_title?: string;
+  domain: "personal" | "work";
 }
 
 export default function HomeScreen() {
@@ -52,9 +61,16 @@ export default function HomeScreen() {
   const [praise, setPraise] = useState<string | null>(null);
   const [taskTab, setTaskTab] = useState<"remaining" | "completed">("remaining");
   const [hasActiveResolutions, setHasActiveResolutions] = useState(false);
+  const [activeContext, setActiveContext] = useState<"personal" | "work">("personal");
+  const [availabilityProfile, setAvailabilityProfile] = useState<AvailabilityProfile | null>(null);
+  const scheduleOverrideUntilRef = useRef<number | null>(null);
+  const availabilityProfileRef = useRef<AvailabilityProfile | null>(null);
   const praiseOpacity = useRef(new Animated.Value(0)).current;
   const { theme, isDark, toggleTheme } = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const contextAccent = useMemo(() => {
+    return activeContext === "work" ? "#475569" : "#6366F1";
+  }, [activeContext, theme.accent]);
+  const styles = useMemo(() => createStyles(theme, contextAccent), [theme, contextAccent]);
 
   const greeting = useMemo(() => getGreeting(new Date()), []);
   const subtitleDate = useMemo(() => formatSubtitleDate(new Date()), []);
@@ -79,17 +95,27 @@ export default function HomeScreen() {
         acc[resolution.resolution_id] = resolution.title;
         return acc;
       }, {});
+      const resolutionDomainLookup = activeResolutions.reduce<Record<string, "personal" | "work">>((acc, resolution) => {
+        acc[resolution.resolution_id] = (resolution.domain as "personal" | "work") || "personal";
+        return acc;
+      }, {});
 
       const filteredTasks = filterTasksForToday(taskResult.tasks);
-      const mappedTasks = filteredTasks.map((task) => ({
-        id: task.id,
-        title: task.title,
-        is_completed: task.completed,
-        scheduled_day: task.scheduled_day,
-        scheduled_time: task.scheduled_time ?? undefined,
-        duration_min: task.duration_min,
-        source_resolution_title: task.resolution_id ? resolutionLookup[task.resolution_id] : undefined,
-      }));
+      const mappedTasks = filteredTasks.map((task) => {
+        const domain =
+          (task as TaskItem & { domain?: "personal" | "work" }).domain ??
+          (task.resolution_id ? resolutionDomainLookup[task.resolution_id] : "personal");
+        return {
+          id: task.id,
+          title: task.title,
+          is_completed: task.completed,
+          scheduled_day: task.scheduled_day,
+          scheduled_time: task.scheduled_time ?? undefined,
+          duration_min: task.duration_min,
+          source_resolution_title: task.resolution_id ? resolutionLookup[task.resolution_id] : undefined,
+          domain: domain || "personal",
+        };
+      });
       setTodayFlow(sortFlowTasks(mappedTasks));
       setJourneyCategories(journeyResult?.categories ?? []);
       setHasActiveResolutions(activeResolutions.length > 0);
@@ -107,16 +133,52 @@ export default function HomeScreen() {
     }
   }, [fetchData, userLoading, userId]);
 
+  const loadPreferences = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const { data } = await getPreferences(userId);
+      setAvailabilityProfile(data.availability_profile);
+      availabilityProfileRef.current = data.availability_profile;
+    } catch {
+      setAvailabilityProfile(null);
+      availabilityProfileRef.current = null;
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    loadPreferences();
+  }, [loadPreferences]);
+
   useFocusEffect(
     useCallback(() => {
       if (!userLoading && userId) {
         fetchData({ silent: true });
+        loadPreferences();
       }
-    }, [fetchData, userLoading, userId]),
+    }, [fetchData, loadPreferences, userLoading, userId]),
   );
 
-  const remainingTasks = useMemo(() => sortFlowTasks(todayFlow.filter((task) => !task.is_completed)), [todayFlow]);
-  const completedTasks = useMemo(() => sortFlowTasks(todayFlow.filter((task) => task.is_completed)), [todayFlow]);
+  useEffect(() => {
+    if (!availabilityProfile) return;
+    const applyScheduleContext = () => {
+      const { context } = computeScheduleContext(availabilityProfile, new Date());
+      const overrideActive = scheduleOverrideUntilRef.current && Date.now() < scheduleOverrideUntilRef.current;
+      if (!overrideActive) {
+        setActiveContext(context);
+        scheduleOverrideUntilRef.current = null;
+      }
+    };
+    applyScheduleContext();
+    const interval = setInterval(applyScheduleContext, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [availabilityProfile]);
+
+  const filteredFlow = useMemo(
+    () => todayFlow.filter((task) => (task.domain || "personal") === activeContext),
+    [todayFlow, activeContext],
+  );
+  const remainingTasks = useMemo(() => sortFlowTasks(filteredFlow.filter((task) => !task.is_completed)), [filteredFlow]);
+  const completedTasks = useMemo(() => sortFlowTasks(filteredFlow.filter((task) => task.is_completed)), [filteredFlow]);
   const heroTask = useMemo(() => remainingTasks[0] ?? null, [remainingTasks]);
   const remainingAfterHero = useMemo(
     () => (heroTask ? remainingTasks.filter((task) => task.id !== heroTask.id) : remainingTasks),
@@ -126,18 +188,18 @@ export default function HomeScreen() {
     () => (taskTab === "remaining" ? remainingAfterHero : completedTasks),
     [taskTab, remainingAfterHero, completedTasks],
   );
-  const allDone = todayFlow.length > 0 && remainingTasks.length === 0;
+  const allDone = filteredFlow.length > 0 && remainingTasks.length === 0;
 
   const backgroundColor = theme.background;
   const textPrimary = theme.textPrimary;
   const textSecondary = theme.textSecondary;
   const sectionTitleColor = theme.textPrimary;
-  const linkColor = theme.accent;
+  const linkColor = contextAccent;
   const quickActionBg = theme.chipBackground;
   const quickActionText = theme.chipText;
   const quickActionShadow = theme.shadow;
   const brandAccentBg = theme.surfaceMuted;
-  const brandAccent = theme.accent;
+  const brandAccent = contextAccent;
   const borderColor = theme.border;
   const heroCardColor = theme.heroPrimary;
   const heroRestColor = theme.heroRest;
@@ -236,6 +298,20 @@ export default function HomeScreen() {
   );
 
   const toggleFab = () => setFabOpen((prev) => !prev);
+  const handleContextSelection = useCallback((value: "personal" | "work") => {
+    setActiveContext(value);
+    const profile = availabilityProfileRef.current;
+    if (!profile) {
+      scheduleOverrideUntilRef.current = Date.now() + DEFAULT_MANUAL_OVERRIDE_MS;
+      return;
+    }
+    const schedule = computeScheduleContext(profile, new Date());
+    if (schedule.nextSwitch) {
+      scheduleOverrideUntilRef.current = schedule.nextSwitch.getTime();
+    } else {
+      scheduleOverrideUntilRef.current = Date.now() + DEFAULT_MANUAL_OVERRIDE_MS;
+    }
+  }, []);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor }]} edges={["left", "right"]}>
@@ -268,11 +344,28 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              <View style={styles.greetingBlock}>
-                <Text style={[styles.greeting, { color: textPrimary }]}>{greeting}, Alex</Text>
-                <Text style={[styles.greetingSubtitle, { color: textSecondary }]}>{subtitleDate}</Text>
-                <Text style={[styles.greetingHint, { color: textSecondary }]}>Stay present. We'll keep the logistics light.</Text>
-              </View>
+            <View style={styles.greetingBlock}>
+              <Text style={[styles.greeting, { color: textPrimary }]}>{greeting}, Alex</Text>
+              <Text style={[styles.greetingSubtitle, { color: textSecondary }]}>{subtitleDate}</Text>
+              <Text style={[styles.greetingHint, { color: textSecondary }]}>Stay present. We'll keep the logistics light.</Text>
+            </View>
+            <View style={[styles.contextToggleRow, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+              {CONTEXT_SEGMENTS.map((option) => {
+                const active = activeContext === option.key;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[styles.contextToggleButton, active && styles.contextToggleButtonActive]}
+                    onPress={() => handleContextSelection(option.key)}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={[styles.contextToggleText, active && styles.contextToggleTextActive]}>
+                      {`${option.icon} ${option.label}`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
               <View style={styles.quickActionsRow}>
                 {quickActions.map((action) => (
@@ -622,7 +715,77 @@ function formatTime(value: string): string {
   return value;
 }
 
-const createStyles = (theme: ThemeTokens) => {
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+function computeScheduleContext(
+  profile: AvailabilityProfile,
+  reference: Date,
+): { context: "personal" | "work"; nextSwitch: Date | null } {
+  const dayKey = WEEKDAY_LABELS[reference.getDay()];
+  const isWorkDay = profile.work_days.includes(dayKey);
+  const startMinutes = timeStringToMinutes(profile.work_start);
+  const endMinutes = timeStringToMinutes(profile.work_end);
+  const currentMinutes = reference.getHours() * 60 + reference.getMinutes();
+
+  if (isWorkDay && currentMinutes >= startMinutes && currentMinutes < endMinutes) {
+    return {
+      context: "work",
+      nextSwitch: buildDateWithMinutes(reference, endMinutes),
+    };
+  }
+
+  if (isWorkDay && currentMinutes < startMinutes) {
+    return {
+      context: "personal",
+      nextSwitch: buildDateWithMinutes(reference, startMinutes),
+    };
+  }
+
+  const nextWorkStart = findNextWorkStart(profile, reference, startMinutes);
+  return {
+    context: "personal",
+    nextSwitch: nextWorkStart,
+  };
+}
+
+function timeStringToMinutes(value: string): number {
+  const [hourStr, minuteStr] = value.split(":");
+  const hour = Number(hourStr);
+  const minute = Number(minuteStr);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return 0;
+  }
+  return hour * 60 + minute;
+}
+
+function buildDateWithMinutes(reference: Date, minutes: number): Date {
+  const hours = Math.floor(minutes / 60);
+  const remainderMinutes = minutes % 60;
+  const date = new Date(reference);
+  date.setHours(hours, remainderMinutes, 0, 0);
+  if (date <= reference) {
+    date.setDate(date.getDate() + 1);
+    date.setHours(hours, remainderMinutes, 0, 0);
+  }
+  return date;
+}
+
+function findNextWorkStart(profile: AvailabilityProfile, reference: Date, startMinutes: number): Date | null {
+  if (!profile.work_days.length) {
+    return null;
+  }
+  for (let offset = 1; offset <= 7; offset += 1) {
+    const candidate = new Date(reference);
+    candidate.setDate(reference.getDate() + offset);
+    const dayKey = WEEKDAY_LABELS[candidate.getDay()];
+    if (profile.work_days.includes(dayKey)) {
+      return buildDateWithMinutes(candidate, startMinutes);
+    }
+  }
+  return null;
+}
+
+const createStyles = (theme: ThemeTokens, accentColor: string) => {
   const accentForeground = theme.mode === "dark" ? theme.textPrimary : "#fff";
   const heroTextColor = theme.mode === "dark" ? theme.textPrimary : "#fff";
   const heroLabelColor = theme.mode === "dark" ? theme.textSecondary : "rgba(255,255,255,0.7)";
@@ -739,7 +902,33 @@ const createStyles = (theme: ThemeTokens) => {
     linkText: {
       fontSize: 14,
       fontWeight: "600",
-      color: theme.accent,
+      color: accentColor,
+    },
+    contextToggleRow: {
+      flexDirection: "row",
+      gap: 6,
+      marginTop: 12,
+      marginBottom: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      padding: 4,
+    },
+    contextToggleButton: {
+      flex: 1,
+      borderRadius: 999,
+      paddingVertical: 8,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    contextToggleButtonActive: {
+      backgroundColor: accentColor,
+    },
+    contextToggleText: {
+      fontWeight: "600",
+      color: theme.textSecondary,
+    },
+    contextToggleTextActive: {
+      color: accentForeground,
     },
     energySection: {
       marginTop: 8,

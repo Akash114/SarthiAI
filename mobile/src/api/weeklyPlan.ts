@@ -8,6 +8,15 @@ export type WeeklyPlanResponse = {
     active_tasks_total: number;
     active_tasks_completed: number;
     completion_rate: number;
+    primary_focus_resolution_id: string | null;
+    resolution_stats: {
+      resolution_id: string;
+      title: string;
+      domain: "personal" | "work";
+      tasks_total: number;
+      tasks_completed: number;
+      completion_rate: number;
+    }[];
   };
   micro_resolution: {
     title: string;

@@ -1,14 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Animated, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
@@ -48,15 +39,24 @@ export default function FocusModeScreen() {
   const initialSeconds = useMemo(() => Math.max(60, Math.round(durationMinutes * 60)), [durationMinutes]);
   const [timeLeft, setTimeLeft] = useState(initialSeconds);
   const [isActive, setIsActive] = useState(true);
-  const [isDistracted, setIsDistracted] = useState(false);
   const [capturedThoughts, setCapturedThoughts] = useState<string[]>([]);
   const [brainDumpVisible, setBrainDumpVisible] = useState(false);
+  const [detailsVisible, setDetailsVisible] = useState(false);
   const [dndActive, setDndActive] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
+  const ambientPulse = useRef(new Animated.Value(0)).current;
+  const glowStyle = {
+    opacity: ambientPulse.interpolate({ inputRange: [0, 1], outputRange: [0.08, 0.22] }),
+    transform: [
+      {
+        scale: ambientPulse.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1.08] }),
+      },
+    ],
+  };
 
   useEffect(() => {
-    if (!isActive || isDistracted) {
+    if (!isActive || brainDumpVisible) {
       return;
     }
     if (timeLeft <= 0) {
@@ -67,7 +67,18 @@ export default function FocusModeScreen() {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(interval);
-  }, [isActive, isDistracted, timeLeft]);
+  }, [isActive, brainDumpVisible, timeLeft]);
+
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(ambientPulse, { toValue: 1, duration: 4000, useNativeDriver: true }),
+        Animated.timing(ambientPulse, { toValue: 0, duration: 4000, useNativeDriver: true }),
+      ]),
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [ambientPulse]);
 
   const formattedTime = useMemo(() => {
     const minutes = Math.floor(timeLeft / 60)
@@ -148,13 +159,21 @@ export default function FocusModeScreen() {
     ]);
   };
 
-  const handleBrainDumpSaved = (entry: { acknowledgement: string; actionable: boolean; actionableItems: string[]; topics: string[]; sentiment: number; text: string }) => {
+  const handleBrainDumpSaved = (entry: {
+    acknowledgement: string;
+    actionable: boolean;
+    actionableItems: string[];
+    topics: string[];
+    sentiment: number;
+    text: string;
+  }) => {
     setCapturedThoughts((prev) => [...prev, entry.text]);
   };
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <View style={[styles.fullContainer, { backgroundColor: theme.background }]}>
+        <Animated.View pointerEvents="none" style={[styles.ambientGlow, glowStyle, { backgroundColor: theme.accent }]} />
         <View style={styles.headerRow}>
           <View style={styles.sessionHeaderLeft}>
             <Text style={[styles.headerLabel, { color: theme.textMuted }]}>Focus companion</Text>
@@ -178,12 +197,7 @@ export default function FocusModeScreen() {
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.timerCard,
-            { backgroundColor: theme.heroPrimary, borderColor: theme.border, shadowColor: theme.shadow },
-          ]}
-        >
+        <View style={[styles.timerSection, { backgroundColor: theme.heroPrimary, borderColor: theme.border }]}>
           <Text style={[styles.timerText, { color: "#fff" }]}>{formattedTime}</Text>
           <View style={[styles.progressTrack, { backgroundColor: theme.surface }]}>
             <View style={[styles.progressFill, { width: `${progressPercent}%`, backgroundColor: theme.accent }]} />
@@ -194,9 +208,9 @@ export default function FocusModeScreen() {
           </View>
         </View>
 
-        <View style={styles.actions}>
+        <View style={styles.primaryActions}>
           <TouchableOpacity
-            style={[styles.primaryButton, { backgroundColor: isActive ? theme.danger : theme.success }]}
+            style={[styles.focusButton, styles.primaryButton, { backgroundColor: isActive ? theme.danger : theme.success }]}
             onPress={handleToggleTimer}
           >
             {isActive ? <Pause size={18} color="#fff" /> : <Play size={18} color="#fff" />}
@@ -204,39 +218,52 @@ export default function FocusModeScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.secondaryButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
+            style={[styles.focusButton, styles.secondaryButton, { borderColor: theme.border }]}
             onPress={handleDistracted}
           >
             <Wind size={18} color={theme.textPrimary} />
             <Text style={[styles.secondaryButtonText, { color: theme.textPrimary }]}>Save a thought</Text>
           </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.completeButton, { backgroundColor: theme.accent }]}
-          onPress={handleCompleteTask}
-          disabled={completing}
-        >
-          <CheckCircle2 size={18} color="#fff" />
-          <Text style={styles.completeButtonText}>{completing ? "Ending…" : "End session"}</Text>
-        </TouchableOpacity>
-        {completeError ? <Text style={[styles.errorText, { color: theme.danger }]}>{completeError}</Text> : null}
-      </View>
-
-        <View style={[styles.thoughtsCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <View style={styles.thoughtHeader}>
-            <Wind size={16} color={theme.textSecondary} />
-            <Text style={[styles.sectionHeading, { color: theme.textPrimary }]}>Captured thoughts</Text>
-          </View>
-          {capturedThoughts.length ? (
-            capturedThoughts.slice(-3).map((thought, index) => (
-              <Text key={`${thought}-${index}`} style={[styles.thoughtText, { color: theme.textSecondary }]}>
-                • {thought}
-              </Text>
-            ))
-          ) : (
-            <Text style={[styles.emptyThoughtText, { color: theme.textSecondary }]}>All clear for now.</Text>
-          )}
+          <TouchableOpacity
+            style={[styles.focusButton, styles.secondaryButton, { borderColor: theme.border }]}
+            onPress={handleCompleteTask}
+            disabled={completing}
+          >
+            <CheckCircle2 size={18} color={theme.textPrimary} />
+            <Text style={[styles.secondaryButtonText, { color: theme.textPrimary }]}>
+              {completing ? "Ending…" : "End session"}
+            </Text>
+          </TouchableOpacity>
+          {completeError ? <Text style={[styles.errorText, { color: theme.danger }]}>{completeError}</Text> : null}
         </View>
+
+        {!detailsVisible ? (
+          <TouchableOpacity
+            style={[styles.moreButton, { borderColor: theme.border }]}
+            onPress={() => setDetailsVisible(true)}
+          >
+            <Text style={[styles.moreButtonText, { color: theme.textSecondary }]}>Open insights</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={[styles.insightsSheet, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.sheetHeader}>
+              <Text style={[styles.sectionHeading, { color: theme.textPrimary }]}>Captured thoughts</Text>
+              <TouchableOpacity onPress={() => setDetailsVisible(false)}>
+                <Text style={[styles.sheetCloseText, { color: theme.textSecondary }]}>Hide</Text>
+              </TouchableOpacity>
+            </View>
+            {capturedThoughts.length ? (
+              capturedThoughts.slice(-5).map((thought, index) => (
+                <Text key={`${thought}-${index}`} style={[styles.thoughtText, { color: theme.textSecondary }]}>
+                  • {thought}
+                </Text>
+              ))
+            ) : (
+              <Text style={[styles.emptyThoughtText, { color: theme.textSecondary }]}>All clear for now.</Text>
+            )}
+          </View>
+        )}
       </View>
 
       <BrainDumpModal
@@ -301,14 +328,23 @@ const styles = StyleSheet.create({
   dndText: {
     fontSize: 13,
   },
-  timerCard: {
-    borderRadius: 28,
-    paddingVertical: 36,
-    paddingHorizontal: 24,
-    shadowOpacity: 0.25,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
+  ambientGlow: {
+    position: "absolute",
+    top: -80,
+    left: -80,
+    right: -80,
+    height: 360,
+    borderRadius: 360,
+  },
+  timerSection: {
+    borderRadius: 32,
+    paddingVertical: 42,
+    paddingHorizontal: 28,
     borderWidth: 1,
+    alignItems: "center",
+    shadowOpacity: 0.2,
+    shadowRadius: 25,
+    shadowOffset: { width: 0, height: 12 },
   },
   timerText: {
     fontSize: 80,
@@ -336,17 +372,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
-  actions: {
+  primaryActions: {
+    marginTop: 24,
     gap: 12,
-    marginTop: 12,
   },
-  primaryButton: {
+  focusButton: {
     borderRadius: 18,
-    paddingVertical: 16,
-    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     flexDirection: "row",
     justifyContent: "center",
+    alignItems: "center",
     gap: 8,
+  },
+  primaryButton: {
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
   },
   primaryButtonText: {
     color: "#fff",
@@ -354,89 +396,40 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   secondaryButton: {
-    borderRadius: 18,
-    paddingVertical: 14,
     borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
+    backgroundColor: "transparent",
   },
   secondaryButtonText: {
-    fontWeight: "700",
-    fontSize: 16,
+    fontWeight: "600",
+    fontSize: 15,
   },
-  completeButton: {
-    borderRadius: 18,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  completeButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  overlay: {
-    position: "absolute",
-    inset: 0,
-    justifyContent: "flex-end",
-  },
-  overlayCard: {
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingHorizontal: 24,
-    paddingVertical: 24,
+  moreButton: {
+    marginTop: 16,
     borderWidth: 1,
-  },
-  overlayHeader: {
-    flexDirection: "row",
+    borderRadius: 16,
+    paddingVertical: 12,
     alignItems: "center",
-    gap: 10,
   },
-  overlayTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  overlaySubtitle: {
-    marginTop: 4,
+  moreButtonText: {
     fontSize: 14,
+    fontWeight: "600",
+    letterSpacing: 0.5,
   },
-  textArea: {
-    minHeight: 120,
-    textAlignVertical: "top",
-    borderRadius: 18,
+  insightsSheet: {
     marginTop: 16,
-    padding: 16,
+    borderRadius: 20,
     borderWidth: 1,
-  },
-  overlayButton: {
-    marginTop: 16,
-    borderRadius: 18,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  overlayButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  thoughtsCard: {
-    borderRadius: 24,
     padding: 20,
-    borderWidth: 1,
-    marginBottom: 24,
+    gap: 12,
   },
-  thoughtHeader: {
+  sheetHeader: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 6,
+  },
+  sheetCloseText: {
+    fontSize: 13,
+    fontWeight: "600",
   },
   sectionHeading: {
     fontSize: 16,

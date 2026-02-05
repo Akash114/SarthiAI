@@ -19,6 +19,7 @@ export type DashboardResolution = {
   resolution_id: string;
   title: string;
   type: string;
+  domain?: "personal" | "work";
   duration_weeks: number | null;
   status: string;
   week: {

@@ -15,6 +15,9 @@ from app.api.schemas.weekly_plan import (
     WeeklyPlanHistoryItem,
     WeeklyPlanHistoryDetailResponse,
     WeeklyPlanResponse,
+    MicroResolutionPayload,
+    WeeklyPlanInputs,
+    ResolutionWeeklyStat,
 )
 from app.db.deps import get_db
 from app.observability.metrics import log_metric
@@ -25,7 +28,6 @@ from app.services.weekly_planner import (
     persist_weekly_plan_preview,
 )
 from app.services.notifications.hooks import notify_weekly_plan_snapshot
-from app.api.schemas.weekly_plan import MicroResolutionPayload, WeeklyPlanInputs
 from app.db.models.agent_action_log import AgentActionLog
 
 router = APIRouter()
@@ -216,6 +218,12 @@ def _response_from_log(log: AgentActionLog) -> WeeklyPlanResponse:
         "why_this": "",
         "suggested_week_1_tasks": [],
     }
+    resolution_stats_payload = inputs_payload.get("resolution_stats") or []
+    resolution_stats = [
+        ResolutionWeeklyStat(**stat)
+        for stat in resolution_stats_payload
+        if isinstance(stat, dict)
+    ]
     return WeeklyPlanResponse(
         user_id=payload.get("user_id", log.user_id),
         week=week_payload,
@@ -224,6 +232,8 @@ def _response_from_log(log: AgentActionLog) -> WeeklyPlanResponse:
             active_tasks_total=inputs_payload.get("active_tasks_total", 0),
             active_tasks_completed=inputs_payload.get("active_tasks_completed", 0),
             completion_rate=inputs_payload.get("completion_rate", 0.0),
+            resolution_stats=resolution_stats,
+            primary_focus_resolution_id=inputs_payload.get("primary_focus_resolution_id"),
         ),
         micro_resolution=MicroResolutionPayload(**micro_payload),
         request_id=payload.get("request_id", ""),

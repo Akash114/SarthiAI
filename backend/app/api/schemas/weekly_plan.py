@@ -12,11 +12,22 @@ class WeekWindowPayload(BaseModel):
     end: date
 
 
+class ResolutionWeeklyStat(BaseModel):
+    resolution_id: UUID
+    title: str
+    domain: Literal["personal", "work"]
+    tasks_total: int
+    tasks_completed: int
+    completion_rate: float
+
+
 class WeeklyPlanInputs(BaseModel):
     active_resolutions: int
     active_tasks_total: int
     active_tasks_completed: int
     completion_rate: float
+    resolution_stats: List[ResolutionWeeklyStat] = Field(default_factory=list)
+    primary_focus_resolution_id: Optional[UUID] = None
 
 
 class SuggestedTaskPayload(BaseModel):

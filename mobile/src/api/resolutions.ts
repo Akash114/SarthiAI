@@ -6,6 +6,8 @@ export type ResolutionResponse = {
   title: string;
   raw_text: string;
   type: string;
+  category: string;
+  domain: "personal" | "work";
   duration_weeks: number | null;
   status: string;
   request_id?: string;
@@ -81,6 +83,8 @@ export type ResolutionSummary = {
   id: string;
   title: string;
   type: string;
+  category?: string | null;
+  domain: string;
   status: string;
   duration_weeks: number | null;
   updated_at: string;
@@ -91,6 +95,8 @@ export type ResolutionDetail = {
   user_id: string;
   title: string;
   type: string;
+  category?: string | null;
+  domain: string;
   status: string;
   duration_weeks: number | null;
   plan: PlanPayload | null;
@@ -120,6 +126,7 @@ export async function createResolution(payload: {
   user_id: string;
   text: string;
   duration_weeks?: number;
+  domain?: "personal" | "work";
 }): Promise<{ resolution: ResolutionResponse; requestId: string | null }> {
   const { data, response } = await apiRequest<ResolutionResponse>("/resolutions", {
     method: "POST",

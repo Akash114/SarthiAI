@@ -11,11 +11,12 @@ from uuid import UUID
 import openai
 from sqlalchemy.orm import Session
 
-from app.api.schemas.weekly_plan import MicroResolutionPayload, SuggestedTaskPayload, WeeklyPlanInputs
+from app.api.schemas.weekly_plan import MicroResolutionPayload, ResolutionWeeklyStat, SuggestedTaskPayload, WeeklyPlanInputs
 from app.db.models.agent_action_log import AgentActionLog
 from app.db.models.user import User
 from app.db.models.resolution import Resolution
 from app.db.models.task import Task
+from app.services.availability_profile import availability_prompt_block, sanitize_availability_profile
 
 
 @dataclass
@@ -80,15 +81,32 @@ def generate_weekly_plan(db: Session, user_id: UUID) -> Tuple[MicroResolutionPay
 
     Returns both the micro plan and the contextual WeeklyPlanInputs used by response payloads.
     """
+    user = db.get(User, user_id)
+    if not user:
+        raise ValueError("User not found")
+
+    availability_profile = sanitize_availability_profile(getattr(user, "availability_profile", None))
     stats = _collect_weekly_stats(db, user_id)
-    context_summary = _gather_user_context(db, user_id, stats)
-    micro_resolution = _request_plan_from_llm(context_summary)
+    focus_resolution = _pick_focus_resolution(stats["resolution_stats"])
+    context_summary = _gather_user_context(stats, focus_resolution, availability_profile)
+    resolution_models = [
+        ResolutionWeeklyStat(**entry)
+        for entry in stats["resolution_stats"]
+    ]
+    micro_resolution = _request_plan_from_llm(
+        context_summary,
+        resolution_models,
+        focus_resolution,
+        availability_profile,
+    )
 
     inputs = WeeklyPlanInputs(
         active_resolutions=stats["active_resolutions"],
         active_tasks_total=stats["total_tasks"],
         active_tasks_completed=stats["completed_tasks"],
         completion_rate=stats["completion_rate"],
+        resolution_stats=resolution_models,
+        primary_focus_resolution_id=focus_resolution["resolution_id"] if focus_resolution else None,
     )
     return micro_resolution, inputs
 
@@ -136,7 +154,7 @@ def run_weekly_planning_for_user(
             "start": week_start_iso,
             "end": week_end_iso,
         },
-        "inputs": inputs.model_dump(),
+        "inputs": inputs.model_dump(mode="json"),
         "micro_resolution": micro_resolution.model_dump(),
         "created_task_ids": [str(task.id) for task in created_tasks],
         "request_id": request_id or "",
@@ -160,13 +178,12 @@ def run_weekly_planning_for_user(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _gather_user_context(db: Session, user_id: UUID, stats: Dict[str, float | int | List[str]] | None = None) -> str:
-    """
-    Build a natural-language summary of the user's recent performance.
-
-    Example: "User has 2 active goals. Last week completion: 85%. Notes: 'Felt tired on Tuesday'."
-    """
-    stats = stats or _collect_weekly_stats(db, user_id)
+def _gather_user_context(
+    stats: Dict[str, float | int | List[str] | List[Dict[str, object]]],
+    focus_resolution: Dict[str, object] | None,
+    availability_profile: Dict[str, object],
+) -> str:
+    """Build a natural-language summary that highlights trends + availability."""
     completion_pct = round(stats["completion_rate"] * 100)
     notes = stats["notes"]
     if notes:
@@ -175,11 +192,35 @@ def _gather_user_context(db: Session, user_id: UUID, stats: Dict[str, float | in
     else:
         notes_fragment = "Notes: none recorded."
 
-    return f"User has {stats['active_resolutions']} active goals. Last week completion: {completion_pct}%. {notes_fragment}"
+    resolution_lines: List[str] = []
+    resolution_stats: List[Dict[str, object]] = stats.get("resolution_stats", []) or []
+    if resolution_stats:
+        best = max(resolution_stats, key=lambda entry: entry["completion_rate"])
+        worst = min(resolution_stats, key=lambda entry: entry["completion_rate"])
+        resolution_lines.append(
+            f"Best progress: {best['title']} at {round(best['completion_rate'] * 100)}%."
+        )
+        if worst["resolution_id"] != best["resolution_id"]:
+            resolution_lines.append(
+                f"Most at-risk: {worst['title']} at {round(worst['completion_rate'] * 100)}%."
+            )
+    if focus_resolution:
+        focus_pct = round(float(focus_resolution["completion_rate"]) * 100)
+        resolution_lines.append(
+            f"Primary focus: {focus_resolution['title']} ({focus_pct}% complete, domain={focus_resolution['domain']})."
+        )
+
+    availability_hint = availability_prompt_block(focus_resolution["domain"] if focus_resolution else None, availability_profile)
+    context = f"User has {stats['active_resolutions']} active goals. Last week completion: {completion_pct}%. {notes_fragment}"
+    if resolution_lines:
+        context = f"{context} {' '.join(resolution_lines)}"
+    if availability_hint:
+        context = f"{context}\nAvailability guidance:\n{availability_hint}"
+    return context
 
 
-def _collect_weekly_stats(db: Session, user_id: UUID) -> Dict[str, float | int | List[str]]:
-    """Return counts/notes for the trailing seven-day window."""
+def _collect_weekly_stats(db: Session, user_id: UUID) -> Dict[str, float | int | List[str] | List[Dict[str, object]]]:
+    """Return counts/notes for the trailing seven-day window plus per-resolution stats."""
     today = date.today()
     window_start = today - timedelta(days=6)
 
@@ -202,6 +243,7 @@ def _collect_weekly_stats(db: Session, user_id: UUID) -> Dict[str, float | int |
     notes: List[str] = []
     total_tasks = 0
     completed_tasks = 0
+    tasks_by_resolution: Dict[UUID, List[Task]] = {}
     for task in scheduled_tasks:
         metadata = task.metadata_json or {}
         if metadata.get("draft"):
@@ -216,8 +258,30 @@ def _collect_weekly_stats(db: Session, user_id: UUID) -> Dict[str, float | int |
         note = metadata.get("note")
         if isinstance(note, str) and note.strip():
             notes.append(note.strip())
+        if task.resolution_id:
+            tasks_by_resolution.setdefault(task.resolution_id, []).append(task)
 
     completion_rate = round((completed_tasks / total_tasks), 2) if total_tasks else 0.0
+    resolution_stats: List[Dict[str, object]] = []
+    for resolution in active_resolutions:
+        res_tasks = tasks_by_resolution.get(resolution.id, [])
+        res_total = len(res_tasks)
+        res_completed = sum(
+            1
+            for item in res_tasks
+            if item.completed and item.completed_at and window_start <= item.completed_at.date() <= today
+        )
+        res_completion = round((res_completed / res_total), 2) if res_total else 0.0
+        resolution_stats.append(
+            {
+                "resolution_id": resolution.id,
+                "title": resolution.title,
+                "domain": (resolution.domain or "personal"),
+                "tasks_total": res_total,
+                "tasks_completed": res_completed,
+                "completion_rate": res_completion,
+            }
+        )
 
     return {
         "active_resolutions": len(active_resolutions),
@@ -225,16 +289,50 @@ def _collect_weekly_stats(db: Session, user_id: UUID) -> Dict[str, float | int |
         "completed_tasks": completed_tasks,
         "completion_rate": completion_rate,
         "notes": notes,
+        "resolution_stats": resolution_stats,
     }
 
 
-def _request_plan_from_llm(context_summary: str) -> MicroResolutionPayload:
+def _pick_focus_resolution(resolution_stats: List[Dict[str, object]]) -> Dict[str, object] | None:
+    """Return the most at-risk resolution (completion < 80%) if available."""
+    if not resolution_stats:
+        return None
+    eligible = [stat for stat in resolution_stats if stat.get("tasks_total", 0) > 0]
+    if not eligible:
+        eligible = resolution_stats
+    eligible = sorted(eligible, key=lambda entry: entry["completion_rate"])
+    candidate = eligible[0]
+    if candidate["completion_rate"] >= 0.8:
+        return None
+    return candidate
+
+
+def _request_plan_from_llm(
+    context_summary: str,
+    resolution_stats: List[ResolutionWeeklyStat],
+    focus_resolution: Dict[str, object] | None,
+    availability_profile: Dict[str, object] | None,
+) -> MicroResolutionPayload:
     """Call OpenAI with the specified prompts or fall back safely."""
     api_key = os.environ.get("OPENAI_API_KEY")
+    focus_title = focus_resolution["title"] if focus_resolution else None
     if not api_key:
-        return _fallback_micro_resolution()
+        return _fallback_micro_resolution(focus_title)
 
     client = openai.OpenAI(api_key=api_key)
+    serialized_stats = json.dumps(
+        [
+            {
+                **stat.model_dump(),
+                "resolution_id": str(stat.resolution_id),
+            }
+            for stat in resolution_stats
+        ]
+    )
+    availability_hint = availability_prompt_block(
+        focus_resolution["domain"] if focus_resolution else None,
+        availability_profile or {},
+    )
     system_prompt = (
         "You are Sarthi AI, a strategic coach. Review the user's last week and design the next. "
         "If they struggled (<50%), simplify and focus on consistency. "
@@ -242,6 +340,9 @@ def _request_plan_from_llm(context_summary: str) -> MicroResolutionPayload:
     )
     user_prompt = (
         f"Context: {context_summary}\n"
+        f"Resolution stats JSON: {serialized_stats}\n"
+        f"Availability guidance: {availability_hint or 'standard working hours'}\n"
+        "Focus on the lowest-performing resolution unless all are above 80% completion.\n"
         "Generate a 'Micro-Resolution' JSON object with keys 'title', 'why_this', "
         "and 'suggested_week_1_tasks'. Include 3-5 specific tasks for the upcoming week. "
         "Each task must contain 'title', 'duration_min' (integer minutes), "
@@ -263,13 +364,14 @@ def _request_plan_from_llm(context_summary: str) -> MicroResolutionPayload:
         micro = MicroResolutionPayload.model_validate(payload)
         return _ensure_task_bounds(micro)
     except Exception:
-        return _fallback_micro_resolution()
+        return _fallback_micro_resolution(focus_title)
 
 
-def _fallback_micro_resolution() -> MicroResolutionPayload:
+def _fallback_micro_resolution(focus_title: str | None = None) -> MicroResolutionPayload:
     """Deterministic fallback when the LLM call fails."""
+    title = f"Reset Week: {focus_title}" if focus_title else "Reset Week"
     return MicroResolutionPayload(
-        title="Reset Week",
+        title=title,
         why_this="Lighten the load, rebuild confidence, and carry momentum into the following week.",
         suggested_week_1_tasks=[
             SuggestedTaskPayload(title="Schedule three 30-min focus blocks", duration_min=30, suggested_time="morning"),

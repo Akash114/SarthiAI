@@ -29,6 +29,9 @@ def create_resolution_endpoint(
     user_id = payload.user_id
     text = payload.text
     duration_weeks = payload.duration_weeks
+    domain = (payload.domain or "personal").lower()
+    if domain not in {"personal", "work"}:
+        domain = "personal"
     text_length = len(text)
     request_id = getattr(http_request.state, "request_id", None)
 
@@ -61,6 +64,7 @@ def create_resolution_endpoint(
                 title=derived.title,
                 type=classified_type,
                 category=category,
+                domain=domain,
                 duration_weeks=duration_weeks,
                 status="draft",
                 metadata_json={"raw_text": text},
@@ -101,6 +105,7 @@ def create_resolution_endpoint(
         raw_text=text,
         type=resolution.type,
         category=resolution.category or infer_category(resolution.type),
+        domain=resolution.domain or "personal",
         duration_weeks=resolution.duration_weeks,
         status=resolution.status,
         request_id=request_id or "",

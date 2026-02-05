@@ -13,6 +13,12 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.observability.metrics import log_metric
 from app.observability.tracing import trace
+from app.services.availability_profile import (
+    availability_day_to_weekday,
+    availability_prompt_block,
+    category_slot_preferences,
+    sanitize_availability_profile,
+)
 from app.services.effort_band import EFFORT_BAND_BUDGETS
 from app.services.plan_evaluator import EvaluationResult, evaluate_plan
 
@@ -484,10 +490,13 @@ def decompose_resolution_with_llm(
     user_input: str,
     duration_weeks: int,
     resolution_type: Optional[str] = None,
+    resolution_category: Optional[str] = None,
     user_context: Optional[Dict[str, Any]] = None,
     effort_band: str | None = None,
     band_rationale: str | None = None,
     request_id: str | None = None,
+    resolution_domain: Optional[str] = None,
+    availability_profile: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """Generate, evaluate, and optionally repair a resolution plan."""
     sanitized_weeks = max(4, min(12, duration_weeks))
@@ -499,13 +508,31 @@ def decompose_resolution_with_llm(
         "duration_weeks": sanitized_weeks,
         "request_id": request_id,
     }
+    trace_metadata["domain"] = domain_label
+    trace_metadata["category"] = resolution_category or "unspecified"
 
+    domain_label = (resolution_domain or "personal").lower()
+    availability = sanitize_availability_profile(availability_profile)
     refined_goal = _refine_resolution_goal(user_input, resolution_type)
+    planning_context = dict(user_context or {})
+    planning_context.setdefault("availability_profile", availability)
+    planning_context.setdefault("resolution_domain", domain_label)
+    planning_context.setdefault("resolution_category", resolution_category)
     api_key = settings.openai_api_key
     client = openai.OpenAI(api_key=api_key) if api_key else None
     if not client:
         print("OPENAI_API_KEY missing; using fallback plan.")
-        plan_dict = _fallback_plan(user_input, sanitized_weeks, resolution_type, user_context, band_label, band_rationale, refined_goal)
+        plan_dict = _fallback_plan(
+            user_input,
+            sanitized_weeks,
+            resolution_type,
+            resolution_category,
+            planning_context,
+            band_label,
+            band_rationale,
+            refined_goal,
+        )
+        plan_dict = _apply_availability_rules_to_plan(plan_dict, domain_label, resolution_category, availability)
         evaluation = _evaluate_with_observability(
             plan_dict,
             band_label,
@@ -520,21 +547,25 @@ def decompose_resolution_with_llm(
         user_input=user_input,
         resolution_type=resolution_type,
         sanitized_weeks=sanitized_weeks,
-        user_context=user_context,
+        user_context=planning_context,
         band_label=band_label,
         band_rationale=band_rationale,
         refined_goal=refined_goal,
+        resolution_domain=domain_label,
+        availability_profile=availability,
+        resolution_category=resolution_category,
     )
     plan_dict = _generate_plan_via_llm(
         client,
         system_prompt,
         base_user_prompt,
         resolution_type,
-        user_context,
+        planning_context,
         trace_metadata,
         request_id,
         sanitized_weeks,
     )
+    plan_dict = _apply_availability_rules_to_plan(plan_dict, domain_label, resolution_category, availability)
     print(f"Plan dict: {plan_dict}")
     evaluation = _evaluate_with_observability(plan_dict, band_label, resolution_type, request_id, trace_metadata, refined_goal)
     print(f"Evaluation: {evaluation}")
@@ -551,13 +582,14 @@ def decompose_resolution_with_llm(
             plan_dict,
             evaluation,
             resolution_type,
-            user_context,
+            planning_context,
             trace_metadata,
             request_id,
             sanitized_weeks,
         )
         if repaired:
             plan_dict = repaired
+            plan_dict = _apply_availability_rules_to_plan(plan_dict, domain_label, resolution_category, availability)
             evaluation = _evaluate_with_observability(plan_dict, band_label, resolution_type, request_id, trace_metadata, refined_goal)
 
     if not evaluation.passed and client:
@@ -569,19 +601,30 @@ def decompose_resolution_with_llm(
             base_user_prompt=base_user_prompt,
             evaluation=evaluation,
             resolution_type=resolution_type,
-            user_context=user_context,
+            user_context=planning_context,
             trace_metadata=trace_metadata,
             request_id=request_id,
             target_weeks=sanitized_weeks,
         )
         if regenerated:
             plan_dict = regenerated
+            plan_dict = _apply_availability_rules_to_plan(plan_dict, domain_label, resolution_category, availability)
             evaluation = _evaluate_with_observability(plan_dict, band_label, resolution_type, request_id, trace_metadata, refined_goal)
 
     if not evaluation.passed:
         fallback_used = True
         log_metric("plan.fallback.used", 1, {"band": band_label})
-        plan_dict = _fallback_plan(user_input, sanitized_weeks, resolution_type, user_context, band_label, band_rationale, refined_goal)
+        plan_dict = _fallback_plan(
+            user_input,
+            sanitized_weeks,
+            resolution_type,
+            resolution_category,
+            planning_context,
+            band_label,
+            band_rationale,
+            refined_goal,
+        )
+        plan_dict = _apply_availability_rules_to_plan(plan_dict, domain_label, resolution_category, availability)
         evaluation = _evaluate_with_observability(plan_dict, band_label, resolution_type, request_id, trace_metadata, refined_goal)
 
     return _finalize_plan(plan_dict, evaluation, band_label, band_rationale, repair_used, regenerate_used, fallback_used)
@@ -596,6 +639,9 @@ def _build_prompts(
     band_label: str,
     band_rationale: str,
     refined_goal: Dict[str, Any],
+    resolution_domain: str,
+    availability_profile: Dict[str, Any],
+    resolution_category: Optional[str],
 ) -> tuple[str, str]:
     schema_json = json.dumps(ResolutionPlan.model_json_schema(), indent=2)
     # SYSTEM PROMPT: The "Sarthi" Persona
@@ -606,6 +652,10 @@ def _build_prompts(
         "You design behavior-change protocols, not generic to-do lists. "
         "Task titles must be concise (3-8 words) and may never contain vague placeholder text."
     )
+
+    availability_block = availability_prompt_block(resolution_domain, availability_profile)
+    if availability_block:
+        system_prompt = f"{system_prompt}\n\n{availability_block}"
 
     # CONTEXT PREPARATION
     context_payload = json.dumps(user_context, indent=2) if user_context else "Not provided"
@@ -635,6 +685,7 @@ def _build_prompts(
     user_prompt = (
         f"User Goal: '{user_input.strip()}'\n"
         f"Resolution Type (Hint): {resolution_type or 'Unspecified (Please infer)'}\n"
+        f"Resolution Category (Hint): {resolution_category or 'Unspecified'}\n"
         f"Duration: {sanitized_weeks} weeks.\n"
         f"Context: {context_payload}\n"
         f"Effort Band: {band_label} (Budget: {minutes_low}-{minutes_high} min/day, Max {weekly_cap} min/week).\n\n"
@@ -1087,6 +1138,7 @@ def _fallback_plan(
     user_input: str,
     duration_weeks: int,
     resolution_type: Optional[str],
+    resolution_category: Optional[str],
     user_context: Optional[Dict[str, Any]],
     band: str,
     band_rationale: str,
@@ -1174,6 +1226,155 @@ def _fallback_plan(
         evaluation_summary={},
     )
     return plan.model_dump()
+
+
+def _apply_availability_rules_to_plan(
+    plan_dict: dict,
+    resolution_domain: str,
+    resolution_category: Optional[str],
+    availability_profile: Dict[str, Any] | None,
+) -> dict:
+    if not isinstance(plan_dict, dict):
+        return plan_dict
+    profile = sanitize_availability_profile(availability_profile)
+    strict_mode = bool(profile.get("work_mode_enabled"))
+    plan_dict["week_1_tasks"] = [
+        _enforce_task_against_availability(task, resolution_domain, resolution_category, profile, strict_mode)
+        for task in plan_dict.get("week_1_tasks", []) or []
+    ]
+    weeks = plan_dict.get("weeks")
+    if isinstance(weeks, list):
+        for section in weeks:
+            tasks = section.get("tasks") if isinstance(section, dict) else None
+            if isinstance(tasks, list):
+                section["tasks"] = [
+                    _enforce_task_against_availability(task, resolution_domain, resolution_category, profile, strict_mode)
+                    for task in tasks
+                ]
+    return plan_dict
+
+
+def _enforce_task_against_availability(
+    task_entry,
+    resolution_domain: str,
+    resolution_category: Optional[str],
+    profile: Dict[str, Any],
+    strict_mode: bool,
+) -> Dict[str, Any]:
+    data = _coerce_task_dict(task_entry)
+    iso_day = data.get("scheduled_day") or data.get("suggested_day")
+    scheduled_day = _parse_iso_date(iso_day) if iso_day else None
+    work_days = _availability_day_indexes(profile.get("work_days"))
+    slot_range, prefer_weekend = category_slot_preferences(resolution_category, profile)
+    work_window = (_time_str_to_minutes(profile["work_start"]), _time_str_to_minutes(profile["work_end"]))
+
+    if resolution_domain == "work":
+        scheduled_day = _ensure_workday(scheduled_day, work_days)
+        slot = _select_work_time(
+            data.get("scheduled_time") or data.get("suggested_time"),
+            profile,
+            profile.get("peak_energy") == "morning",
+        )
+    else:
+        if prefer_weekend and (not scheduled_day or scheduled_day.weekday() < 5):
+            scheduled_day = _shift_to_weekend(scheduled_day)
+        slot = _select_personal_time(
+            scheduled_day,
+            data.get("scheduled_time") or data.get("suggested_time"),
+            profile,
+            slot_range,
+            strict_mode,
+            work_window,
+        )
+
+    data["scheduled_day"] = scheduled_day.isoformat() if scheduled_day else data.get("scheduled_day")
+    data["suggested_day"] = data["scheduled_day"]
+    data["scheduled_time"] = slot
+    data["suggested_time"] = slot
+    return data
+
+
+def _coerce_task_dict(task_entry) -> Dict[str, Any]:
+    if isinstance(task_entry, dict):
+        return dict(task_entry)
+    if hasattr(task_entry, "model_dump"):
+        return task_entry.model_dump()
+    return {}
+
+
+def _availability_day_indexes(days: List[str] | None) -> List[int]:
+    indexes: List[int] = []
+    for code in days or []:
+        weekday = availability_day_to_weekday(code) if isinstance(code, str) else None
+        if weekday is not None:
+            indexes.append(weekday)
+    if not indexes:
+        return [0, 1, 2, 3, 4]
+    return indexes
+
+
+def _ensure_workday(current: Optional[date], allowed_days: List[int]) -> date:
+    day = current or date.today()
+    for _ in range(21):
+        if day.weekday() in allowed_days:
+            return day
+        day += timedelta(days=1)
+    return day
+
+
+def _shift_to_weekend(current: Optional[date]) -> date:
+    day = current or date.today()
+    if day.weekday() >= 5:
+        return day
+    days_until_saturday = (5 - day.weekday()) % 7
+    if days_until_saturday == 0:
+        days_until_saturday = 5
+    return day + timedelta(days=days_until_saturday)
+
+
+def _select_work_time(existing_time: Optional[str], profile: Dict[str, Any], prefer_morning: bool) -> str:
+    start = _time_str_to_minutes(profile["work_start"])
+    end = _time_str_to_minutes(profile["work_end"])
+    if end <= start:
+        end = start + 8 * 60
+    default_minutes = start if prefer_morning else max(start, end - 60)
+    desired = _time_str_to_minutes(existing_time) if isinstance(existing_time, str) else default_minutes
+    desired = max(start, min(end - 15, desired))
+    return _minutes_to_time(desired)
+
+
+def _select_personal_time(
+    scheduled_day: Optional[date],
+    existing_time: Optional[str],
+    profile: Dict[str, Any],
+    preferred_range: Optional[Tuple[int, int]],
+    strict_mode: bool,
+    work_window: Tuple[int, int],
+) -> str:
+    work_start, work_end = work_window
+    is_weekend = bool(scheduled_day and scheduled_day.weekday() >= 5)
+    if preferred_range:
+        default_minutes = preferred_range[0]
+    else:
+        default_minutes = 7 * 60 if profile.get("peak_energy") == "morning" else 19 * 60
+    desired = _time_str_to_minutes(existing_time) if isinstance(existing_time, str) else default_minutes
+    if strict_mode and not is_weekend and work_start <= desired < work_end:
+        desired = min(22 * 60, work_end + 60)
+        if desired >= 22 * 60:
+            desired = max(5 * 60, work_start - 90)
+    elif not is_weekend and work_start <= desired < work_end:
+        desired = min(22 * 60, work_end + 60)
+    desired = max(5 * 60, min(22 * 60, desired))
+    return _minutes_to_time(desired)
+
+
+def _is_high_effort_task(task: Dict[str, Any]) -> bool:
+    duration = task.get("estimated_duration_min") or task.get("duration_min")
+    try:
+        value = int(duration)
+    except Exception:
+        return False
+    return value >= 45
 
 
 def _format_template_text(value: Optional[str], goal_focus: str) -> Optional[str]:
