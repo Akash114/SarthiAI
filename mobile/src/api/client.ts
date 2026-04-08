@@ -3,12 +3,19 @@ import { Platform } from "react-native";
 // Android emulator uses 10.0.2.2 to access host machine's localhost
 // iOS simulator and web can use localhost
 // For physical devices, use your machine's LAN IP address
+const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+
 const getApiBaseUrl = (): string => {
-  if (Platform.OS === "android") {
-    return "https://sarthiai-backend.ctxbt.com/";
+  if (configuredApiBaseUrl) {
+    return configuredApiBaseUrl;
   }
-  // iOS simulator and web
-  return "https://sarthiai-backend.ctxbt.com/";
+
+  if (Platform.OS === "android") {
+    return "http://10.0.2.2:8000/";
+  }
+
+  // iOS simulator and web defaults
+  return "http://localhost:8000/";
 };
 
 const API_BASE_URL = getApiBaseUrl().replace(/\/+$/, "");
