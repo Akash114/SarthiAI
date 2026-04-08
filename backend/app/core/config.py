@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     task_reminder_interval_minutes: int = 5
     task_reminder_lookahead_minutes: int = 30
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
+    cors_allow_origins: str = "*"
+    cors_allow_methods: str = "*"
+    cors_allow_headers: str = "*"
+    cors_allow_credentials: bool = False
 
 
 @lru_cache

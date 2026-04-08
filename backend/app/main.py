@@ -1,5 +1,6 @@
 """Main FastAPI application for Sarthi AI backend."""
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.brain_dump import router as brain_dump_router
 from app.api.routes.resolution import router as resolution_router
@@ -23,8 +24,21 @@ from app.observability.tracing import trace
 
 configure_logging(log_level=settings.log_level)
 
+
+def _parse_csv(value: str) -> list[str]:
+    """Parse comma-separated setting values into a normalized list."""
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.add_middleware(RequestIDMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_parse_csv(settings.cors_allow_origins),
+    allow_methods=_parse_csv(settings.cors_allow_methods),
+    allow_headers=_parse_csv(settings.cors_allow_headers),
+    allow_credentials=settings.cors_allow_credentials,
+)
 app.include_router(brain_dump_router)
 app.include_router(resolution_router)
 app.include_router(resolutions_intake_router)

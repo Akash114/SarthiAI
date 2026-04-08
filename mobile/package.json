@@ -2,7 +2,7 @@
   "name": "sarthiai-mobile",
   "version": "0.1.0",
   "private": true,
-  "main": "App.tsx",
+  "main": "index.ts",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -15,6 +15,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "^8.5.1",
     "@react-navigation/native": "^6.1.17",
+    "@react-navigation/stack": "^6.4.1",
     "@react-navigation/native-stack": "^6.9.26",
     "expo": "~54.0.0",
     "expo-calendar": "^15.0.8",
