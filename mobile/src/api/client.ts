@@ -1,49 +1,103 @@
-import { Platform } from "react-native";
-
-// Android emulator uses 10.0.2.2 to access host machine's localhost
-// iOS simulator and web can use localhost
-// For physical devices, use your machine's LAN IP address
-const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-
-const getApiBaseUrl = (): string => {
-  if (configuredApiBaseUrl) {
-    return configuredApiBaseUrl;
-  }
-
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:8000/";
-  }
-
-  // iOS simulator and web defaults
-  return "http://localhost:8000/";
-};
-
-const API_BASE_URL = getApiBaseUrl().replace(/\/+$/, "");
+import { API_BASE_URL } from "./config";
+import { refreshTokens } from "./auth";
+import { notifySessionInvalidated } from "../session/sessionInvalidated";
+import {
+  clearTokens,
+  getAccessTokenSync,
+  getRefreshTokenSync,
+  hasRefreshToken,
+  setTokensFromPair,
+} from "../session/sessionTokens";
 
 type ApiOptions = Omit<RequestInit, "body"> & {
   body?: Record<string, unknown>;
+  /** Skip Authorization and 401→refresh (for auth endpoints or bootstrap). */
+  skipAuthRefresh?: boolean;
 };
 
-export async function apiRequest<TResponse>(path: string, options: ApiOptions = {}): Promise<{
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function refreshAccessTokenSingleFlight(): Promise<boolean> {
+  const refresh = getRefreshTokenSync();
+  if (!refresh) {
+    return false;
+  }
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const pair = await refreshTokens(refresh);
+        await setTokensFromPair(pair);
+        return true;
+      } catch {
+        await clearTokens();
+        notifySessionInvalidated();
+        return false;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+  }
+  return refreshInFlight;
+}
+
+export async function apiRequest<TResponse>(
+  path: string,
+  options: ApiOptions = {},
+): Promise<{
   data: TResponse;
   response: Response;
 }> {
-  const headers = {
+  const { skipAuthRefresh = false, ...rest } = options;
+  return performRequest<TResponse>(path, { ...rest, skipAuthRefresh }, false);
+}
+
+async function performRequest<TResponse>(
+  path: string,
+  options: ApiOptions,
+  isRetry: boolean,
+): Promise<{
+  data: TResponse;
+  response: Response;
+}> {
+  const { skipAuthRefresh = false, body, ...init } = options;
+  const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
-    ...(options.headers || {}),
+    ...(init.headers as Record<string, string> | undefined),
   };
+
+  if (!skipAuthRefresh) {
+    const token = getAccessTokenSync();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
 
   try {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
     const response = await fetch(`${API_BASE_URL}${normalizedPath}`, {
-      method: options.method ?? "GET",
+      ...init,
+      method: init.method ?? "GET",
       headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      body: body ? JSON.stringify(body) : undefined,
     });
 
     const text = await response.text();
     const json = text ? JSON.parse(text) : null;
+
+    if (
+      response.status === 401 &&
+      !skipAuthRefresh &&
+      !isRetry &&
+      hasRefreshToken()
+    ) {
+      const ok = await refreshAccessTokenSingleFlight();
+      if (ok) {
+        return performRequest<TResponse>(path, options, true);
+      }
+      const message = json?.detail ?? "Session expired. Please sign in again.";
+      throw new Error(typeof message === "string" ? message : "Session expired");
+    }
 
     if (!response.ok) {
       const message = json?.detail ?? response.statusText ?? "Request failed";
@@ -52,13 +106,13 @@ export async function apiRequest<TResponse>(path: string, options: ApiOptions = 
 
     return { data: json as TResponse, response };
   } catch (error) {
-    // Handle network errors
     if (error instanceof TypeError && error.message.includes("fetch")) {
       throw new Error(
-        `Network request failed. Make sure the backend server is running at ${API_BASE_URL}`
+        `Network request failed. Make sure the backend server is running at ${API_BASE_URL}`,
       );
     }
-    // Re-throw other errors
     throw error;
   }
 }
+
+export { API_BASE_URL };

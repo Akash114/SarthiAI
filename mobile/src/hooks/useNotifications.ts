@@ -1,12 +1,14 @@
 import { useCallback } from "react";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
+import { SchedulableTriggerInputTypes } from "expo-notifications";
 import Constants from "expo-constants";
 import { registerPushToken } from "../api/notifications";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
@@ -80,7 +82,10 @@ export function useNotifications() {
         title: "Sarathi AI",
         body: `Time for: ${task.title}`,
       },
-      trigger: triggerDate,
+      trigger: {
+        type: SchedulableTriggerInputTypes.DATE,
+        date: triggerDate,
+      },
     });
     return id;
   }, []);

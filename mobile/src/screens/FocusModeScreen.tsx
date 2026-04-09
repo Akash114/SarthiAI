@@ -16,7 +16,8 @@ type Navigation = NativeStackNavigationProp<RootStackParamList>;
 
 const QUIET_HANDLER = {
   handleNotification: async () => ({
-    shouldShowAlert: false,
+    shouldShowBanner: false,
+    shouldShowList: false,
     shouldPlaySound: false,
     shouldSetBadge: false,
   }),
@@ -24,7 +25,8 @@ const QUIET_HANDLER = {
 
 const DEFAULT_HANDLER = {
   handleNotification: async () => ({
-    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),

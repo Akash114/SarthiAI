@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text,
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Settings, Plus, Brain, Target, Calendar, Shield, CheckSquare, Play, Hexagon, Moon, Sun, Zap, Sparkles } from "lucide-react-native";
+import { Settings, Plus, Brain, Target, Calendar, Shield, CheckSquare, Play, Hexagon, Moon, Sun, Zap, Sparkles, User } from "lucide-react-native";
 import * as dashboardApi from "../api/dashboard";
 import * as tasksApi from "../api/tasks";
 import type { TaskItem } from "../api/tasks";
@@ -334,6 +334,13 @@ export default function HomeScreen() {
                     onPress={toggleTheme}
                   >
                     {isDark ? <Sun size={18} color={theme.warning} /> : <Moon size={18} color={theme.textSecondary} />}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.controlButton, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}
+                    onPress={() => navigation.navigate("Account")}
+                    accessibilityLabel="Account"
+                  >
+                    <User color={theme.textPrimary} size={20} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.controlButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
@@ -1009,11 +1016,6 @@ const createStyles = (theme: ThemeTokens, accentColor: string) => {
     },
     heroRestCard: {
       backgroundColor: theme.heroRest,
-    },
-    heroEmptyCard: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      backgroundColor: theme.surface,
     },
     heroEmptyCard: {
       borderWidth: 1,

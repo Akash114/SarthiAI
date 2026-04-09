@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Calendar, Shield, Power, PauseCircle, FileText, Bell, Sparkles } from "lucide-react-native";
+import { Calendar, Shield, Power, PauseCircle, FileText, Bell, Sparkles, User } from "lucide-react-native";
 import { getPreferences, updatePreferences, PreferencesResponse } from "../api/preferences";
 import { useUserId } from "../state/user";
 import type { RootStackParamList } from "../../types/navigation";
@@ -175,6 +175,21 @@ export default function SettingsPermissionsScreen() {
 
           <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>System</Text>
+            <TouchableOpacity
+              style={[styles.systemRow, { borderColor: theme.border }]}
+              onPress={() => navigation.navigate("Account")}
+            >
+              <View style={[styles.systemIcon, { backgroundColor: theme.surfaceMuted }]}>
+                <User size={18} color={theme.textPrimary} />
+              </View>
+              <View style={styles.notificationText}>
+                <Text style={[styles.systemText, { color: theme.textPrimary }]}>Account</Text>
+                <Text style={[styles.notificationHelper, { color: theme.textSecondary }]}>
+                  Sign in, sign out, and session
+                </Text>
+              </View>
+              <Text style={[styles.chevron, { color: theme.textSecondary }]}>›</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.systemRow, { borderColor: theme.border }]}
               onPress={handleNotificationEnable}

@@ -2,6 +2,9 @@ import type { ResolutionResponse } from "../src/api/resolutions";
 
 export type RootStackParamList = {
   Home: undefined;
+  SignIn: undefined;
+  SignUp: undefined;
+  Account: undefined;
   BrainDump: undefined;
   DraftPlans: undefined;
   MyWeek: undefined;

@@ -370,11 +370,10 @@ const createStyles = (theme: ThemeTokens) => {
     },
     statLabelBlock: {
       flex: 1,
-      gap: 2,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    flexWrap: "wrap",
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 6,
     },
     statTitle: {
       fontSize: 16,

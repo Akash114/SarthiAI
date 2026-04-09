@@ -2,7 +2,7 @@ import "react-native-get-random-values";
 import "react-native-gesture-handler";
 import * as React from "react";
 import { useMemo } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createStackNavigator } from "@react-navigation/stack";
@@ -28,6 +28,10 @@ import InterventionsHistoryDetailScreen from "./src/screens/InterventionsHistory
 import TaskEditScreen from "./src/screens/TaskEditScreen";
 import TaskCreateScreen from "./src/screens/TaskCreateScreen";
 import FocusModeScreen from "./src/screens/FocusModeScreen";
+import SignInScreen from "./src/screens/SignInScreen";
+import SignUpScreen from "./src/screens/SignUpScreen";
+import AccountScreen from "./src/screens/AccountScreen";
+import { SessionProvider, useSession } from "./src/session/SessionContext";
 import { ThemeProvider, useTheme } from "./src/theme";
 import type { RootStackParamList } from "./types/navigation";
 
@@ -123,6 +127,9 @@ function Navigator() {
       <Screen name="TaskCreate" component={TaskCreateScreen} options={{ title: "New Task" }} />
       <Screen name="TaskEdit" component={TaskEditScreen} options={{ title: "Edit Task" }} />
       <Screen name="FocusMode" component={FocusModeScreen} options={{ headerShown: false, presentation: "modal" }} />
+      <Screen name="SignIn" component={SignInScreen} options={{ title: "Sign in" }} />
+      <Screen name="SignUp" component={SignUpScreen} options={{ title: "Create account" }} />
+      <Screen name="Account" component={AccountScreen} options={{ title: "Account" }} />
     </>
   );
 
@@ -138,15 +145,38 @@ function Navigator() {
   );
 }
 
+function SessionGate() {
+  const { status } = useSession();
+  const { theme } = useTheme();
+  if (status === "bootstrapping") {
+    return (
+      <View style={[sessionGateStyles.splash, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.accent} />
+      </View>
+    );
+  }
+  return <Navigator />;
+}
+
 function App() {
   return (
     <RootErrorBoundary>
       <ThemeProvider>
-        <Navigator />
+        <SessionProvider>
+          <SessionGate />
+        </SessionProvider>
       </ThemeProvider>
     </RootErrorBoundary>
   );
 }
+
+const sessionGateStyles = StyleSheet.create({
+  splash: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
 
 const styles = StyleSheet.create({
   errorRoot: {

@@ -78,13 +78,24 @@ export default function AgentLogDetailScreen() {
   const isBrainDump = entry?.action_type === "brain_dump_analyzed";
 
   if (isBrainDump) {
-    const payload = entry.payload ?? {};
-    const signals = payload.signals ?? payload;
-    const acknowledgement = signals.acknowledgement ?? "We'll take it one step at a time.";
-    const emotions: string[] = Array.isArray(signals.emotions) ? signals.emotions : [];
-    const actionableItems: string[] = Array.isArray(signals.actionable_items) ? signals.actionable_items : [];
+    const payload = (entry.payload ?? {}) as Record<string, unknown>;
+    const rawSignals = payload.signals ?? payload;
+    const signals = typeof rawSignals === "object" && rawSignals !== null ? (rawSignals as Record<string, unknown>) : {};
+    const acknowledgement =
+      typeof signals.acknowledgement === "string" ? signals.acknowledgement : "We'll take it one step at a time.";
+    const emotions: string[] = Array.isArray(signals.emotions)
+      ? (signals.emotions as unknown[]).filter((e): e is string => typeof e === "string")
+      : [];
+    const actionableItems: string[] = Array.isArray(signals.actionable_items)
+      ? (signals.actionable_items as unknown[]).filter((e): e is string => typeof e === "string")
+      : [];
     const sentiment = typeof signals.sentiment_score === "number" ? signals.sentiment_score : 0;
-    const userText = typeof payload.text === "string" ? payload.text : payload.user_input;
+    const userText =
+      typeof payload.text === "string"
+        ? payload.text
+        : typeof payload.user_input === "string"
+          ? payload.user_input
+          : undefined;
 
     return (
       <ScrollView contentContainerStyle={styles.brainContainer} stickyHeaderIndices={[]}>
@@ -163,10 +174,10 @@ export default function AgentLogDetailScreen() {
       </View>
 
       <View style={styles.metaCard}>
-        <InfoRow label="Action type" value={entry.action_type} />
-        <InfoRow label="Undo available" value={entry.undo_available ? "Yes" : "No"} />
-        {entry.request_id ? <InfoRow label="request_id" value={entry.request_id} /> : null}
-        {requestId ? <InfoRow label="request_id header" value={requestId} /> : null}
+        <InfoRow label="Action type" value={entry.action_type} styles={styles} />
+        <InfoRow label="Undo available" value={entry.undo_available ? "Yes" : "No"} styles={styles} />
+        {entry.request_id ? <InfoRow label="request_id" value={entry.request_id} styles={styles} /> : null}
+        {requestId ? <InfoRow label="request_id header" value={requestId} styles={styles} /> : null}
       </View>
 
       <View style={styles.payloadBox}>
@@ -179,7 +190,15 @@ export default function AgentLogDetailScreen() {
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({
+  label,
+  value,
+  styles,
+}: {
+  label: string;
+  value: string;
+  styles: ReturnType<typeof createStyles>;
+}) {
   return (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>

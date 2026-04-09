@@ -62,7 +62,7 @@ export default function AgentLogScreen() {
         const { items, nextCursor: cursorValue } = await listAgentLog(userId, {
           limit: 50,
           cursor: cursor ?? (reset ? null : undefined),
-          action_type: actionType ?? filterType ?? undefined,
+          actionType: actionType ?? filterType ?? undefined,
         });
         const activeType = actionType ?? filterType;
         const filteredItems =
