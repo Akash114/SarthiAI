@@ -6,10 +6,11 @@ from time import perf_counter
 from typing import Any, Dict, List
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import check_user_access
 from app.api.schemas.decomposition import (
     DecompositionRequest,
     DecompositionResponse,
@@ -23,10 +24,7 @@ from app.db.models.user import User
 from app.db.models.task import Task
 from app.observability.metrics import log_metric
 from app.observability.tracing import trace
-from app.services.resolution_decomposer import (
-    decompose_resolution_with_llm,
-    _fallback_plan,
-)
+from app.services.resolution_decomposer import decompose_resolution_with_llm
 from app.services.effort_band import infer_effort_band
 from app.services.resolution_tasks import (
     delete_existing_draft_tasks,
@@ -47,12 +45,15 @@ def decompose_resolution_endpoint(
     http_request: Request,
     payload: DecompositionRequest | None = None,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> DecompositionResponse:
     """Generate or return a multi-week plan plus draft week-one tasks."""
     params = payload or DecompositionRequest()
     resolution = db.get(Resolution, resolution_id)
     if not resolution:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resolution not found")
+
+    check_user_access(resolution.user_id, authorization)
 
     request_id = getattr(http_request.state, "request_id", None)
     user = db.get(User, resolution.user_id)

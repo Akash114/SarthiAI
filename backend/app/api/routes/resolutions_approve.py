@@ -5,9 +5,10 @@ from time import perf_counter
 from typing import Any, Dict, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import check_user_access
 from app.api.schemas.approval import ApprovalRequest, ApprovalResponse, ApprovedTaskPayload
 from app.db.deps import get_db
 from app.observability.metrics import log_metric
@@ -27,8 +28,10 @@ def approve_resolution_endpoint(
     payload: ApprovalRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> ApprovalResponse:
     """Approve, reject, or request regeneration for a resolution plan."""
+    check_user_access(payload.user_id, authorization)
     request_id = getattr(http_request.state, "request_id", None)
 
     base_metadata: Dict[str, Any] = {

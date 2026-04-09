@@ -1,11 +1,12 @@
 """Journey widget endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Request
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import get_effective_user_id
 from app.api.schemas.journey import DailyJourneyResponse, JourneyCategoryPayload
 from app.db.deps import get_db
 from app.observability.metrics import log_metric
@@ -18,8 +19,8 @@ router = APIRouter()
 @router.get("/journey/daily", response_model=DailyJourneyResponse, tags=["journey"])
 def get_daily_journey(
     request: Request,
-    user_id: UUID = Query(..., description="User ID"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> DailyJourneyResponse:
     request_id = getattr(request.state, "request_id", None)
     with trace("journey.daily", metadata={"user_id": str(user_id)}, user_id=str(user_id), request_id=request_id):

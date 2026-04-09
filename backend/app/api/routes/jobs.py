@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import check_user_access
 from app.api.schemas.jobs import JobRunRequest, JobRunResponse
 from app.core.config import settings
 from app.db.deps import get_db
@@ -47,9 +48,13 @@ def run_job_now(
     request: Request,
     payload: JobRunRequest,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> JobRunResponse:
     if not settings.debug:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Run-now only allowed in debug mode")
+
+    if payload.user_id is not None:
+        check_user_access(payload.user_id, authorization)
 
     request_id = getattr(request.state, "request_id", None)
     metadata = {"job": payload.job, "request_id": request_id}

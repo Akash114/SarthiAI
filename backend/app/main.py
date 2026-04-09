@@ -16,6 +16,7 @@ from app.api.routes.preferences import router as preferences_router
 from app.api.routes.jobs import router as jobs_router
 from app.api.routes.notifications import router as notifications_router
 from app.api.routes.agent_log import router as agent_log_router
+from app.api.routes.auth import router as auth_router
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestIDMiddleware
@@ -39,6 +40,7 @@ app.add_middleware(
     allow_headers=_parse_csv(settings.cors_allow_headers),
     allow_credentials=settings.cors_allow_credentials,
 )
+app.include_router(auth_router)
 app.include_router(brain_dump_router)
 app.include_router(resolution_router)
 app.include_router(resolutions_intake_router)

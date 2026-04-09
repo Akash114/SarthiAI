@@ -4,9 +4,10 @@ from __future__ import annotations
 from time import perf_counter
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import check_user_access, get_effective_user_id
 from app.api.schemas.preferences import PreferencesResponse, PreferencesUpdateRequest
 from app.db.deps import get_db
 from app.observability.metrics import log_metric
@@ -18,7 +19,11 @@ router = APIRouter()
 
 
 @router.get("/preferences", response_model=PreferencesResponse, tags=["preferences"])
-def get_preferences(request: Request, user_id: UUID = Query(..., description="User ID"), db: Session = Depends(get_db)) -> PreferencesResponse:
+def get_preferences(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
+) -> PreferencesResponse:
     request_id = getattr(request.state, "request_id", None)
     start = perf_counter()
     metadata = {"user_id": str(user_id), "request_id": request_id}
@@ -35,7 +40,13 @@ def get_preferences(request: Request, user_id: UUID = Query(..., description="Us
 
 
 @router.patch("/preferences", response_model=PreferencesResponse, tags=["preferences"])
-def update_preferences_endpoint(payload: PreferencesUpdateRequest, request: Request, db: Session = Depends(get_db)) -> PreferencesResponse:
+def update_preferences_endpoint(
+    payload: PreferencesUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
+) -> PreferencesResponse:
+    check_user_access(payload.user_id, authorization)
     request_id = getattr(request.state, "request_id", None)
     start = perf_counter()
     metadata = {"user_id": str(payload.user_id), "request_id": request_id}

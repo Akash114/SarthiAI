@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import get_effective_user_id
 from app.api.schemas.approval import ApprovedTaskPayload
 from app.api.schemas.decomposition import DraftTaskPayload, PlanMilestone, PlanPayload, WeekPlanSection
 from app.api.schemas.resolution import (
@@ -31,9 +32,9 @@ router = APIRouter()
 @router.get("/resolutions", response_model=List[ResolutionSummary], tags=["resolutions"])
 def list_resolutions(
     http_request: Request,
-    user_id: UUID = Query(..., description="User ID owning the resolutions"),
     status: Optional[str] = Query(default=None, pattern="^(draft|active)$"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> List[ResolutionSummary]:
     """List resolutions for a user with optional status filtering."""
     request_id = getattr(http_request.state, "request_id", None) if http_request else None
@@ -84,8 +85,8 @@ def list_resolutions(
 def get_resolution_detail(
     resolution_id: UUID,
     http_request: Request,
-    user_id: UUID = Query(..., description="User ID that must own the resolution"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> ResolutionDetailResponse:
     """Return a resolution plus its plan and relevant tasks."""
     request_id = getattr(http_request.state, "request_id", None) if http_request else None

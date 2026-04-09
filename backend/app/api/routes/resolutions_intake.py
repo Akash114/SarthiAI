@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import check_user_access
 from app.api.schemas.resolution import ResolutionCreateRequest, ResolutionResponse
 from app.db.deps import get_db
 from app.db.models.resolution import Resolution
@@ -24,8 +25,10 @@ def create_resolution_endpoint(
     payload: ResolutionCreateRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> ResolutionResponse:
     """Store a new resolution derived from free text."""
+    check_user_access(payload.user_id, authorization)
     user_id = payload.user_id
     text = payload.text
     duration_weeks = payload.duration_weeks

@@ -1,9 +1,10 @@
 """Notification configuration and token routes."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import check_user_access
 from app.api.schemas.notifications import NotificationTokenRequest, NotificationTokenResponse
 from app.core.config import settings
 from app.db.deps import get_db
@@ -36,7 +37,9 @@ def register_notification_token(
     payload: NotificationTokenRequest,
     request: Request,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> NotificationTokenResponse:
+    check_user_access(payload.user_id, authorization)
     request_id = getattr(request.state, "request_id", None)
     metadata = {"user_id": str(payload.user_id), "platform": payload.platform, "request_id": request_id}
     with trace("notifications.register", metadata=metadata, user_id=str(payload.user_id), request_id=request_id):
@@ -59,7 +62,9 @@ def unregister_notification_token(
     payload: NotificationTokenRequest,
     request: Request,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> NotificationTokenResponse:
+    check_user_access(payload.user_id, authorization)
     request_id = getattr(request.state, "request_id", None)
     metadata = {"user_id": str(payload.user_id), "request_id": request_id}
     with trace("notifications.unregister", metadata=metadata, user_id=str(payload.user_id), request_id=request_id):

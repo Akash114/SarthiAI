@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     cors_allow_headers: str = "*"
     cors_allow_credentials: bool = False
 
+    # Auth (JWT access + hashed refresh tokens). Set jwt_secret for production.
+    auth_enabled: bool = True
+    jwt_secret: str = "dev-insecure-change-me-use-32bytes-min!!"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 30
+    auth_legacy_allow_unauthenticated: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

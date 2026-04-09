@@ -4,10 +4,11 @@ from __future__ import annotations
 from typing import Any, Dict
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import check_user_access
 from app.api.schemas.brain_dump import BrainDumpRequest, BrainDumpResponse, BrainDumpSignals
 from app.db.deps import get_db
 from app.db.models.agent_action_log import AgentActionLog
@@ -22,9 +23,15 @@ router = APIRouter()
 
 
 @router.post("/brain-dump", response_model=BrainDumpResponse, tags=["brain-dump"])
-def ingest_brain_dump(request: BrainDumpRequest, http_request: Request, db: Session = Depends(get_db)) -> BrainDumpResponse:
+def ingest_brain_dump(
+    request: BrainDumpRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
+) -> BrainDumpResponse:
     """Persist a brain dump and return extracted signals."""
     user_id: UUID = request.user_id
+    check_user_access(user_id, authorization)
     text = request.text.strip()
     if not text:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="text must not be empty")

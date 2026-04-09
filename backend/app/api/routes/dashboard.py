@@ -4,9 +4,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import get_effective_user_id
 from app.api.schemas.dashboard import DashboardResponse
 from app.db.deps import get_db
 from app.observability.metrics import log_metric
@@ -19,8 +20,8 @@ router = APIRouter()
 @router.get("/dashboard", response_model=DashboardResponse, tags=["dashboard"])
 def get_dashboard(
     http_request: Request,
-    user_id: UUID = Query(..., description="User ID"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> DashboardResponse:
     request_id = getattr(http_request.state, "request_id", None)
     start_time = datetime.now(timezone.utc)

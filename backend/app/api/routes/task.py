@@ -5,10 +5,11 @@ from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import asc, nulls_last
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import check_user_access, get_effective_user_id
 from app.api.schemas.task import (
     TaskCreateRequest,
     TaskSummary,
@@ -34,8 +35,10 @@ def create_task(
     payload: TaskCreateRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> TaskSummary:
     """Create a manual or resolution-linked task."""
+    check_user_access(payload.user_id, authorization)
     request_id = getattr(http_request.state, "request_id", None)
     metadata: Dict[str, Any] = {
         "route": "/tasks",
@@ -127,12 +130,12 @@ def create_task(
 @router.get("/tasks", response_model=List[TaskSummary], tags=["tasks"])
 def list_tasks(
     http_request: Request,
-    user_id: UUID = Query(..., description="User ID owning the tasks"),
     status: str = Query("active", pattern="^(active|draft|all)$"),
     from_: Optional[date] = Query(default=None, alias="from"),
     to: Optional[date] = Query(default=None),
     resolution_id: Optional[UUID] = Query(default=None, description="Filter by resolution"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> List[TaskSummary]:
     """List tasks for a user with optional status and date filtering."""
     request_id = getattr(http_request.state, "request_id", None)
@@ -198,8 +201,8 @@ def list_tasks(
 @router.get("/tasks/{task_id}", response_model=TaskSummary, tags=["tasks"])
 def get_task_detail(
     task_id: UUID,
-    user_id: UUID = Query(..., description="User ID owning the task"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> TaskSummary:
     task = db.get(Task, task_id)
     if not task:
@@ -213,8 +216,8 @@ def get_task_detail(
 def delete_task(
     task_id: UUID,
     http_request: Request,
-    user_id: UUID = Query(..., description="User ID owning the task"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> Response:
     """Delete a task owned by the user."""
     task = db.get(Task, task_id)
@@ -271,8 +274,10 @@ def update_task_completion(
     payload: TaskUpdateRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> TaskUpdateResponse:
     """Mark a task complete or incomplete."""
+    check_user_access(payload.user_id, authorization)
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
@@ -388,8 +393,10 @@ def update_task_note(
     payload: TaskNoteUpdateRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> TaskNoteUpdateResponse:
     """Set or clear a task note."""
+    check_user_access(payload.user_id, authorization)
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
@@ -485,7 +492,9 @@ def edit_task(
     payload: TaskEditRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> TaskSummary:
+    check_user_access(payload.user_id, authorization)
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")

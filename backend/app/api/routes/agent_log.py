@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import and_, desc, or_
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import get_effective_user_id
 from app.api.schemas.agent_log import AgentLogDetailResponse, AgentLogListItem, AgentLogListResponse
 from app.db.deps import get_db
 from app.db.models.agent_action_log import AgentActionLog
@@ -23,11 +24,11 @@ router = APIRouter()
 @router.get("/agent-log", response_model=AgentLogListResponse, tags=["agent-log"])
 def list_agent_log(
     request: Request,
-    user_id: UUID = Query(..., description="User ID"),
     limit: int = Query(50, ge=1, le=100),
     cursor: str | None = Query(None),
     action_type: str | None = Query(None, description="Filter by action type"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> AgentLogListResponse:
     request_id = getattr(request.state, "request_id", None)
     metadata = {
@@ -80,8 +81,8 @@ def list_agent_log(
 def get_agent_log(
     log_id: UUID,
     request: Request,
-    user_id: UUID = Query(..., description="User ID"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> AgentLogDetailResponse:
     request_id = getattr(request.state, "request_id", None)
     metadata = {"user_id": str(user_id), "log_id": str(log_id), "request_id": request_id}

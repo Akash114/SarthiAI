@@ -4,10 +4,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from time import perf_counter
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import check_user_access, get_effective_user_id
 from app.api.schemas.interventions import (
     InterventionPreviewResponse,
     InterventionRunRequest,
@@ -37,8 +38,8 @@ router = APIRouter()
 @router.get("/interventions/preview", response_model=InterventionPreviewResponse, tags=["interventions"])
 def interventions_preview(
     request: Request,
-    user_id: UUID = Query(..., description="User ID"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> InterventionPreviewResponse:
     request_id = getattr(request.state, "request_id", None)
     metadata = {"user_id": str(user_id), "request_id": request_id}
@@ -82,7 +83,9 @@ def interventions_run(
     request: Request,
     payload: InterventionRunRequest,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> InterventionPreviewResponse:
+    check_user_access(payload.user_id, authorization)
     request_id = getattr(request.state, "request_id", None)
     metadata = {"user_id": str(payload.user_id), "request_id": request_id}
     start = perf_counter()
@@ -116,8 +119,8 @@ def interventions_run(
 @router.get("/interventions/latest", response_model=InterventionSnapshotResponse, tags=["interventions"])
 def interventions_latest(
     request: Request,
-    user_id: UUID = Query(..., description="User ID"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> InterventionSnapshotResponse:
     request_id = getattr(request.state, "request_id", None)
     metadata = {"user_id": str(user_id), "request_id": request_id}
@@ -136,9 +139,9 @@ def interventions_latest(
 @router.get("/interventions/history", response_model=InterventionHistoryResponse, tags=["interventions"])
 def interventions_history(
     request: Request,
-    user_id: UUID = Query(..., description="User ID"),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> InterventionHistoryResponse:
     request_id = getattr(request.state, "request_id", None)
     metadata = {"user_id": str(user_id), "request_id": request_id, "limit": limit}
@@ -177,8 +180,8 @@ def interventions_history(
 def interventions_history_item(
     log_id: UUID,
     request: Request,
-    user_id: UUID = Query(..., description="User ID"),
     db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_effective_user_id),
 ) -> InterventionHistoryDetailResponse:
     request_id = getattr(request.state, "request_id", None)
     metadata = {"user_id": str(user_id), "log_id": str(log_id), "request_id": request_id}
@@ -212,7 +215,9 @@ def interventions_respond(
     request: Request,
     payload: InterventionResponse,
     db: Session = Depends(get_db),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> dict:
+    check_user_access(payload.user_id, authorization)
     request_id = getattr(request.state, "request_id", None)
     metadata = {"user_id": str(payload.user_id), "option": payload.option_key, "request_id": request_id}
     with trace("interventions.respond", metadata=metadata, user_id=str(payload.user_id), request_id=request_id):
