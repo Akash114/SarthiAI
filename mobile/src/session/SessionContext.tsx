@@ -13,6 +13,7 @@ import {
   type TokenPairResponse,
 } from "../api/auth";
 import { unregisterPushToken } from "../api/notifications";
+import { LAST_EXPO_PUSH_TOKEN_KEY } from "../pushTokenStorage";
 import { ANONYMOUS_USER_STORAGE_KEY, ensureAnonymousUserId } from "./anonymousUserId";
 import { setSessionInvalidateHandler } from "./sessionInvalidated";
 import {
@@ -186,6 +187,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     }
     await clearTokens();
+    await AsyncStorage.removeItem(LAST_EXPO_PUSH_TOKEN_KEY);
     setAuthUserId(null);
     setIsAuthenticated(false);
     setEmail(null);

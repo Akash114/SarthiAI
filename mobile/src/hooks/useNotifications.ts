@@ -1,9 +1,11 @@
 import { useCallback } from "react";
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { SchedulableTriggerInputTypes } from "expo-notifications";
 import Constants from "expo-constants";
 import { registerPushToken } from "../api/notifications";
+import { LAST_EXPO_PUSH_TOKEN_KEY } from "../pushTokenStorage";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -57,8 +59,14 @@ export function useNotifications() {
         const options: Notifications.ExpoPushTokenOptions | undefined = projectId ? { projectId } : undefined;
         const expoPushToken = await Notifications.getExpoPushTokenAsync(options);
         if (userId && expoPushToken?.data) {
+          const token = expoPushToken.data;
+          const previous = await AsyncStorage.getItem(LAST_EXPO_PUSH_TOKEN_KEY);
+          if (previous === token) {
+            return true;
+          }
           try {
-            await registerPushToken(userId, expoPushToken.data, Platform.OS);
+            await registerPushToken(userId, token, Platform.OS);
+            await AsyncStorage.setItem(LAST_EXPO_PUSH_TOKEN_KEY, token);
           } catch {
             // backend registration best-effort
           }
@@ -71,6 +79,7 @@ export function useNotifications() {
     [],
   );
 
+  // Local scheduling is a UX fallback. Server-side task reminders (scheduler + Expo) are canonical when enabled.
   const scheduleTaskReminder = useCallback(async (task: NotificationTask) => {
     const triggerDate = parseTaskSchedule(task);
     if (!triggerDate || triggerDate.getTime() <= Date.now()) {

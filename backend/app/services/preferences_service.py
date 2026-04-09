@@ -16,6 +16,7 @@ DEFAULTS = {
     "coaching_paused": False,
     "weekly_plans_enabled": True,
     "interventions_enabled": True,
+    "task_reminders_enabled": True,
 }
 
 
@@ -41,6 +42,8 @@ def update_preferences(
     coaching_paused: Optional[bool] = None,
     weekly_plans_enabled: Optional[bool] = None,
     interventions_enabled: Optional[bool] = None,
+    task_reminders_enabled: Optional[bool] = None,
+    timezone: Optional[str] = None,
     availability_profile: Optional[dict[str, Any]] = None,
     request_id: Optional[str] = None,
 ) -> UserPreferences:
@@ -57,6 +60,12 @@ def update_preferences(
     if interventions_enabled is not None and interventions_enabled != prefs.interventions_enabled:
         prefs.interventions_enabled = interventions_enabled
         changed["interventions_enabled"] = interventions_enabled
+    if task_reminders_enabled is not None and task_reminders_enabled != prefs.task_reminders_enabled:
+        prefs.task_reminders_enabled = task_reminders_enabled
+        changed["task_reminders_enabled"] = task_reminders_enabled
+    if timezone is not None and timezone != prefs.timezone:
+        prefs.timezone = timezone or None
+        changed["timezone"] = prefs.timezone
 
     if availability_profile is not None:
         normalized_profile = sanitize_availability_profile(availability_profile)

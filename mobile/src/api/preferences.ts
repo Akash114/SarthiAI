@@ -18,6 +18,8 @@ export type PreferencesResponse = {
   coaching_paused: boolean;
   weekly_plans_enabled: boolean;
   interventions_enabled: boolean;
+  task_reminders_enabled: boolean;
+  timezone: string | null;
   availability_profile: AvailabilityProfile;
   request_id: string;
 };
@@ -31,7 +33,15 @@ export async function getPreferences(userId: string): Promise<{ data: Preference
 export async function updatePreferences(
   userId: string,
   patch: Partial<
-    Pick<PreferencesResponse, "coaching_paused" | "weekly_plans_enabled" | "interventions_enabled" | "availability_profile">
+    Pick<
+      PreferencesResponse,
+      | "coaching_paused"
+      | "weekly_plans_enabled"
+      | "interventions_enabled"
+      | "task_reminders_enabled"
+      | "timezone"
+      | "availability_profile"
+    >
   >,
 ): Promise<{ data: PreferencesResponse; requestId: string | null }>
 {

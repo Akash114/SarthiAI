@@ -175,7 +175,7 @@ def test_intervention_notification_only_when_flagged(client, monkeypatch):
     )
     session.close()
     assert notif
-    assert notif.action_payload["result"]["status"] == "noop"
+    assert notif.action_payload["result"]["status"] == "skipped"
 
     session = session_factory()
     fake_snapshot = AgentActionLog(
@@ -197,11 +197,11 @@ def test_intervention_notification_only_when_flagged(client, monkeypatch):
     class DummyService:
         def notify_weekly_plan_ready(self, **kwargs):  # pragma: no cover - not used
             called["value"] = True
-            return NotificationResult(status="noop", reason="dummy")
+            return NotificationResult(status="skipped", reason="dummy")
 
         def notify_intervention_ready(self, **kwargs):
             called["value"] = True
-            return NotificationResult(status="noop", reason="dummy")
+            return NotificationResult(status="skipped", reason="dummy")
 
     monkeypatch.setattr("app.services.notifications.hooks.get_notification_service", lambda: DummyService())
     notify_intervention_snapshot(session, fake_snapshot, None)

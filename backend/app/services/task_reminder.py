@@ -1,14 +1,12 @@
 """Task reminder notification service."""
 from __future__ import annotations
 
-import json
 import os
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone, time as dt_time
-from typing import Iterable, List, Tuple
+from typing import List
 
-import httpx
 import openai
 from zoneinfo import ZoneInfo
 
@@ -21,9 +19,9 @@ from app.db.models.user_preferences import UserPreferences
 from app.observability.metrics import log_metric
 from app.observability.tracing import trace
 from app.services.notification_tokens import fetch_user_tokens
+from app.services.notifications.expo_client import send_expo_push_batch
 
 _REMINDER_KEY = "reminder_sent_at"
-_tz = ZoneInfo(settings.scheduler_timezone)
 logger = logging.getLogger(__name__)
 
 
@@ -68,47 +66,77 @@ def run_task_reminder_check(db: Session) -> ReminderRunStats:
         if not message:
             continue
 
-        payloads = [
-            {
-                "to": token.token,
-                "title": "Sarathi AI",
-                "body": message,
-                "sound": "default",
-            }
-            for token in tokens
-            if token.active
-        ]
-        if not payloads:
+        active_tokens = [t for t in tokens if t.active]
+        if not active_tokens:
             continue
 
         if not _preferences_allow_reminder(db, task.user_id):
             continue
+
+        messages = [
+            {
+                "to": t.token,
+                "title": "Sarathi AI",
+                "body": message,
+                "sound": "default",
+                "data": {
+                    "type": "task_reminder",
+                    "task_id": str(task.id),
+                    "user_id": str(task.user_id),
+                },
+            }
+            for t in active_tokens
+        ]
 
         with trace(
             "notifications.task_reminder",
             metadata={"user_id": str(task.user_id), "task_id": str(task.id)},
             user_id=str(task.user_id),
         ):
-            _dispatch(payloads)
-            metadata[_REMINDER_KEY] = now.isoformat()
-            task.metadata_json = metadata
-            db.add(task)
-            db.commit()
-            users_notified.add(str(task.user_id))
-            notifications_sent += len(payloads)
-            logger.info(
-                "Task reminder sent user=%s task=%s tokens=%s scheduled_at=%s",
+            result = send_expo_push_batch(db, task.user_id, messages)
+
+        if result.tokens_ok == 0:
+            logger.warning(
+                "Task reminder push had no successful deliveries user=%s task=%s status=%s reason=%s",
                 task.user_id,
                 task.id,
-                len(payloads),
-                candidate.scheduled_at.isoformat(),
+                result.status,
+                result.reason,
             )
+            continue
+
+        metadata[_REMINDER_KEY] = now.isoformat()
+        task.metadata_json = metadata
+        db.add(task)
+        db.commit()
+        users_notified.add(str(task.user_id))
+        notifications_sent += result.tokens_ok
+        if result.tokens_deactivated:
+            log_metric("notifications.tokens_deactivated", result.tokens_deactivated, metadata={"channel": "task_reminder"})
+        logger.info(
+            "Task reminder sent user=%s task=%s tokens_ok=%s scheduled_at=%s",
+            task.user_id,
+            task.id,
+            result.tokens_ok,
+            candidate.scheduled_at.isoformat(),
+        )
 
     if notifications_sent:
         log_metric("task_reminders.sent", notifications_sent, metadata={})
     else:
         logger.info("Task reminder check completed with no notifications.")
     return ReminderRunStats(users_processed=len(users_notified), snapshots_written=notifications_sent)
+
+
+def _user_zoneinfo(db: Session, user_id) -> ZoneInfo:
+    prefs = db.get(UserPreferences, user_id)
+    tz_name = getattr(prefs, "timezone", None) if prefs else None
+    if tz_name:
+        try:
+            return ZoneInfo(tz_name)
+        except Exception:
+            logger.debug("Invalid user timezone %r, using scheduler default", tz_name)
+    return ZoneInfo(settings.scheduler_timezone)
 
 
 def _gather_candidates(db: Session, window_start: datetime, window_end: datetime) -> List[ReminderCandidate]:
@@ -130,7 +158,8 @@ def _gather_candidates(db: Session, window_start: datetime, window_end: datetime
         metadata = dict(task.metadata_json or {})
         if metadata.get("draft"):
             continue
-        scheduled_at = _combine_datetime(task.scheduled_day, task.scheduled_time)
+        tz = _user_zoneinfo(db, task.user_id)
+        scheduled_at = _combine_datetime(task.scheduled_day, task.scheduled_time, tz)
         if not scheduled_at:
             continue
         if window_start <= scheduled_at <= window_end:
@@ -140,14 +169,18 @@ def _gather_candidates(db: Session, window_start: datetime, window_end: datetime
     return candidates
 
 
-def _combine_datetime(day: date | None, scheduled_time: dt_time | None) -> datetime | None:
+def _combine_datetime(
+    day: date | None,
+    scheduled_time: dt_time | None,
+    tz: ZoneInfo,
+) -> datetime | None:
     if not day or not scheduled_time:
         return None
     local_dt = datetime.combine(day, scheduled_time)
     if scheduled_time.tzinfo:
         aware = local_dt.astimezone(timezone.utc)
     else:
-        aware = local_dt.replace(tzinfo=_tz).astimezone(timezone.utc)
+        aware = local_dt.replace(tzinfo=tz).astimezone(timezone.utc)
     return aware
 
 
@@ -201,22 +234,12 @@ def _load_goal_context(db: Session, user_id) -> list[str]:
     return [row.title for row in rows]
 
 
-def _dispatch(payloads: list[dict]) -> None:
-    if not payloads:
-        return
-    headers = {"accept": "application/json", "content-type": "application/json"}
-    with httpx.Client(timeout=5) as client:
-        response = client.post(settings.expo_push_url, json=payloads, headers=headers)
-        if response.status_code >= 400:
-            raise RuntimeError(f"Failed to send push notification: {response.text}")
-
-
 def _preferences_allow_reminder(db: Session, user_id) -> bool:
     prefs = db.get(UserPreferences, user_id)
     if not prefs:
         return True
     if prefs.coaching_paused:
         return False
-    if not prefs.weekly_plans_enabled:
+    if not getattr(prefs, "task_reminders_enabled", True):
         return False
     return True

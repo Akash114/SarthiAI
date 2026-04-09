@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
+from sqlalchemy.orm import Session
+
 from app.services.notifications.base import NotificationResult, NotificationService
 
 
@@ -14,11 +16,14 @@ class NoopNotificationService(NotificationService):
     def notify_weekly_plan_ready(
         self,
         *,
+        db: Session,
         user_id: UUID,
         week_start: str,
         week_end: str,
         snapshot_id: UUID,
         request_id: str | None,
+        title: str | None = None,
+        body: str | None = None,
     ) -> NotificationResult:
         logger.info(
             "Notification queued (noop) weekly_plan user=%s week=%s-%s snapshot=%s",
@@ -27,17 +32,20 @@ class NoopNotificationService(NotificationService):
             week_end,
             snapshot_id,
         )
-        return NotificationResult(status="noop", reason="notification provider is noop")
+        return NotificationResult(status="skipped", reason="notification provider is noop")
 
     def notify_intervention_ready(
         self,
         *,
+        db: Session,
         user_id: UUID,
         week_start: str,
         week_end: str,
         snapshot_id: UUID,
         flagged: bool,
         request_id: str | None,
+        title: str | None = None,
+        body: str | None = None,
     ) -> NotificationResult:
         logger.info(
             "Notification queued (noop) interventions user=%s week=%s-%s snapshot=%s flagged=%s",
@@ -47,4 +55,4 @@ class NoopNotificationService(NotificationService):
             snapshot_id,
             flagged,
         )
-        return NotificationResult(status="noop", reason="notification provider is noop")
+        return NotificationResult(status="skipped", reason="notification provider is noop")

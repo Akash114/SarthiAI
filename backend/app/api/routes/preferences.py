@@ -58,6 +58,8 @@ def update_preferences_endpoint(
                 coaching_paused=payload.coaching_paused,
                 weekly_plans_enabled=payload.weekly_plans_enabled,
                 interventions_enabled=payload.interventions_enabled,
+                task_reminders_enabled=payload.task_reminders_enabled,
+                timezone=payload.timezone,
                 availability_profile=payload.availability_profile.model_dump() if payload.availability_profile else None,
                 request_id=request_id,
             )
@@ -76,6 +78,8 @@ def _serialize_preferences(prefs, request_id: str | None) -> PreferencesResponse
         coaching_paused=bool(prefs.coaching_paused),
         weekly_plans_enabled=bool(prefs.weekly_plans_enabled),
         interventions_enabled=bool(prefs.interventions_enabled),
+        task_reminders_enabled=bool(getattr(prefs, "task_reminders_enabled", True)),
+        timezone=getattr(prefs, "timezone", None),
         availability_profile=prefs.availability_profile,
         request_id=request_id or "",
     )

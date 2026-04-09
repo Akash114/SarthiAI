@@ -68,6 +68,8 @@ def test_get_preferences_creates_defaults(client):
     assert data["coaching_paused"] is False
     assert data["weekly_plans_enabled"] is True
     assert data["interventions_enabled"] is True
+    assert data["task_reminders_enabled"] is True
+    assert data["timezone"] is None or isinstance(data["timezone"], str)
     assert data["availability_profile"]["work_days"]
     assert data["availability_profile"]["peak_energy"] in {"morning", "evening"}
     assert data["availability_profile"]["work_mode_enabled"] is False
@@ -114,6 +116,24 @@ def test_patch_updates_and_logs(client):
         assert log.action_payload["changes"]["coaching_paused"] is True
     finally:
         session.close()
+
+
+def test_patch_timezone_and_task_reminders(client):
+    test_client, session_factory = client
+    user_id = _seed_user(session_factory)
+    test_client.get("/preferences", params={"user_id": str(user_id)})
+    resp = test_client.patch(
+        "/preferences",
+        json={
+            "user_id": str(user_id),
+            "timezone": "America/New_York",
+            "task_reminders_enabled": False,
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["timezone"] == "America/New_York"
+    assert data["task_reminders_enabled"] is False
 
 
 def test_patch_no_changes_does_not_log(client):

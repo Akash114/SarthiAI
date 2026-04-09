@@ -32,6 +32,7 @@ import SignInScreen from "./src/screens/SignInScreen";
 import SignUpScreen from "./src/screens/SignUpScreen";
 import AccountScreen from "./src/screens/AccountScreen";
 import { SessionProvider, useSession } from "./src/session/SessionContext";
+import { SessionBootstrapEffects } from "./src/session/SessionBootstrapEffects";
 import { ThemeProvider, useTheme } from "./src/theme";
 import type { RootStackParamList } from "./types/navigation";
 
@@ -155,7 +156,12 @@ function SessionGate() {
       </View>
     );
   }
-  return <Navigator />;
+  return (
+    <>
+      <SessionBootstrapEffects />
+      <Navigator />
+    </>
+  );
 }
 
 function App() {

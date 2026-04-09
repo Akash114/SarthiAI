@@ -141,22 +141,30 @@ def _notify(
         user_id=str(log.user_id),
         request_id=request_id,
     ) as notification_trace:
+        weekly_title = "Your week is ready"
+        intervention_title = "Sarthi check-in"
         result = (
             service.notify_weekly_plan_ready(
+                db=db,
                 user_id=log.user_id,
                 week_start=week_start or "",
                 week_end=week_end or "",
                 snapshot_id=log.id,
                 request_id=request_id,
+                title=weekly_title,
+                body=input_summary or None,
             )
             if job_name == "weekly_plan"
             else service.notify_intervention_ready(
+                db=db,
                 user_id=log.user_id,
                 week_start=week_start or "",
                 week_end=week_end or "",
                 snapshot_id=log.id,
                 flagged=_is_truthy(extra.get("flagged")),
                 request_id=request_id,
+                title=intervention_title,
+                body=input_summary or None,
             )
         )
     if notification_trace:
@@ -164,9 +172,24 @@ def _notify(
         summary_text = f"{job_name.title()} notification: {message}"
         notification_trace.update({"llm_output_text": summary_text[:500]})
     duration_ms = (perf_counter() - start) * 1000
-    log_metric("notifications.sent", 1, metadata={"job": job_name, "provider": settings.notifications_provider})
-    log_metric("notifications.duration_ms", duration_ms, metadata={"job": job_name})
+    _emit_delivery_metrics(job_name, result, duration_ms)
     _record_notification_log(db, log, job_name, result=result, request_id=request_id, extra=extra)
+
+
+def _emit_delivery_metrics(job_name: str, result: NotificationResult, duration_ms: float) -> None:
+    meta = {"job": job_name, "provider": settings.notifications_provider}
+    log_metric("notifications.duration_ms", duration_ms, metadata=meta)
+    if result.status == "skipped":
+        if "no active push tokens" in (result.reason or ""):
+            log_metric("notifications.no_tokens", 1, metadata=meta)
+        return
+    if result.status in ("sent", "partial") and result.tokens_ok > 0:
+        log_metric("notifications.sent", 1, metadata=meta)
+        log_metric("notifications.tokens_ok", result.tokens_ok, metadata=meta)
+    if result.status == "failed":
+        log_metric("notifications.failed", 1, metadata={**meta, "retryable": str(result.retryable)})
+    if result.tokens_deactivated > 0:
+        log_metric("notifications.tokens_deactivated", result.tokens_deactivated, metadata=meta)
 
 
 def _record_notification_log(
@@ -180,6 +203,7 @@ def _record_notification_log(
 ) -> None:
     if result.status == "skipped":
         log_metric("notifications.skipped", 1, metadata={"job": job_name})
+    dispatched = result.status in ("sent", "partial") and result.tokens_ok > 0
     payload = {
         "snapshot_log_id": str(log.id),
         "week_start": extra.get("week_start"),
@@ -193,7 +217,7 @@ def _record_notification_log(
         user_id=log.user_id,
         action_type="notification_weekly_plan" if job_name == "weekly_plan" else "notification_intervention",
         action_payload=payload,
-        reason="Notification dispatched" if result.status != "skipped" else "Notification skipped",
+        reason="Notification dispatched" if dispatched else "Notification skipped",
         undo_available=False,
     )
     db.add(notification_log)

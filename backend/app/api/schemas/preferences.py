@@ -29,6 +29,8 @@ class PreferencesResponse(BaseModel):
     coaching_paused: bool
     weekly_plans_enabled: bool
     interventions_enabled: bool
+    task_reminders_enabled: bool
+    timezone: Optional[str] = None
     availability_profile: AvailabilityProfile
     request_id: str
 
@@ -38,4 +40,6 @@ class PreferencesUpdateRequest(BaseModel):
     coaching_paused: Optional[bool] = None
     weekly_plans_enabled: Optional[bool] = None
     interventions_enabled: Optional[bool] = None
+    task_reminders_enabled: Optional[bool] = None
+    timezone: Optional[str] = None
     availability_profile: Optional[AvailabilityProfile] = None

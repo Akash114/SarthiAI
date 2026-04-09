@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Calendar, Shield, Power, PauseCircle, FileText, Bell, Sparkles, User } from "lucide-react-native";
+import { Calendar, Shield, Power, PauseCircle, FileText, Bell, Sparkles, User, Clock } from "lucide-react-native";
 import { getPreferences, updatePreferences, PreferencesResponse } from "../api/preferences";
 import { useUserId } from "../state/user";
 import type { RootStackParamList } from "../../types/navigation";
@@ -55,7 +55,10 @@ export default function SettingsPermissionsScreen() {
   }, [fetchPrefs, userId, userLoading]);
 
   const handleToggle = async (
-    key: keyof Pick<PreferencesResponse, "coaching_paused" | "weekly_plans_enabled" | "interventions_enabled">,
+    key: keyof Pick<
+      PreferencesResponse,
+      "coaching_paused" | "weekly_plans_enabled" | "interventions_enabled" | "task_reminders_enabled"
+    >,
     value: boolean,
   ) => {
     if (!userId) return;
@@ -170,6 +173,15 @@ export default function SettingsPermissionsScreen() {
               disabled={savingKey !== null || prefs.coaching_paused}
               paused={prefs.coaching_paused}
               icon={<Shield size={20} color={theme.textSecondary} />}
+            />
+            <SettingRow
+              label="Task reminders"
+              description="Server push when a scheduled task is coming up (uses your device timezone)."
+              value={prefs.task_reminders_enabled ?? true}
+              onValueChange={(value) => handleToggle("task_reminders_enabled", value)}
+              disabled={savingKey !== null || prefs.coaching_paused}
+              paused={prefs.coaching_paused}
+              icon={<Clock size={20} color={theme.textSecondary} />}
             />
           </View>
 
