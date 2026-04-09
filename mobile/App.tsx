@@ -3,6 +3,7 @@ import "react-native-gesture-handler";
 import * as React from "react";
 import { useMemo } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createStackNavigator } from "@react-navigation/stack";
@@ -33,6 +34,8 @@ import SignUpScreen from "./src/screens/SignUpScreen";
 import AccountScreen from "./src/screens/AccountScreen";
 import { SessionProvider, useSession } from "./src/session/SessionContext";
 import { SessionBootstrapEffects } from "./src/session/SessionBootstrapEffects";
+import { MutationQueueProvider } from "./src/offline/MutationQueueContext";
+import { OfflineSyncBanner } from "./src/offline/OfflineSyncBanner";
 import { ThemeProvider, useTheme } from "./src/theme";
 import type { RootStackParamList } from "./types/navigation";
 
@@ -157,10 +160,17 @@ function SessionGate() {
     );
   }
   return (
-    <>
+    <SafeAreaProvider>
       <SessionBootstrapEffects />
-      <Navigator />
-    </>
+      <MutationQueueProvider>
+        <View style={{ flex: 1 }}>
+          <OfflineSyncBanner />
+          <View style={{ flex: 1 }}>
+            <Navigator />
+          </View>
+        </View>
+      </MutationQueueProvider>
+    </SafeAreaProvider>
   );
 }
 

@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "./config";
 import { refreshTokens } from "./auth";
+import { ApiError } from "./networkErrors";
 import { notifySessionInvalidated } from "../session/sessionInvalidated";
 import {
   clearTokens,
@@ -96,19 +97,27 @@ async function performRequest<TResponse>(
         return performRequest<TResponse>(path, options, true);
       }
       const message = json?.detail ?? "Session expired. Please sign in again.";
-      throw new Error(typeof message === "string" ? message : "Session expired");
+      throw new ApiError(typeof message === "string" ? message : "Session expired", 401);
     }
 
     if (!response.ok) {
       const message = json?.detail ?? response.statusText ?? "Request failed";
-      throw new Error(typeof message === "string" ? message : "Request failed");
+      throw new ApiError(
+        typeof message === "string" ? message : "Request failed",
+        response.status,
+      );
     }
 
     return { data: json as TResponse, response };
   } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
     if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new Error(
+      throw new ApiError(
         `Network request failed. Make sure the backend server is running at ${API_BASE_URL}`,
+        0,
+        true,
       );
     }
     throw error;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isLikelyNetworkFailure } from "../api/networkErrors";
 import { listTasks, TaskItem } from "../api/tasks";
 import { normalizeDateInput, normalizeTimeInput } from "../utils/datetime";
 
@@ -42,6 +43,10 @@ export function useTasks(userId: string | null, options: UseTasksOptions = {}) {
       setRequestId(reqId);
     } catch (err) {
       if (!isMounted.current) return;
+      if (isLikelyNetworkFailure(err)) {
+        setError("You're offline — showing the last loaded tasks.");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Unable to load tasks right now.");
     } finally {
       if (isMounted.current) {

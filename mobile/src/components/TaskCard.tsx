@@ -25,6 +25,8 @@ type Props = {
   disabled?: boolean;
   onDelete?: (taskId: string) => void;
   deleteDisabled?: boolean;
+  /** Offline mutation queue: show subtle sync state on the row. */
+  syncStatus?: "pending" | "failed";
 };
 
 export function TaskCard({
@@ -36,6 +38,7 @@ export function TaskCard({
   disabled,
   onDelete,
   deleteDisabled,
+  syncStatus,
 }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [alreadySynced, setAlreadySynced] = useState(false);
@@ -183,6 +186,16 @@ export function TaskCard({
             {task.title}
           </Text>
           <Text style={[styles.metaText, { color: theme.textSecondary }]}>{scheduleLabel || "Unscheduled"}</Text>
+          {syncStatus ? (
+            <Text
+              style={[
+                styles.metaText,
+                { color: syncStatus === "failed" ? theme.danger : theme.textMuted, marginTop: 2 },
+              ]}
+            >
+              {syncStatus === "pending" ? "Pending sync" : "Sync failed"}
+            </Text>
+          ) : null}
           {badgeLabel ? (
             <View style={[styles.badge, { backgroundColor: theme.accentSoft }]}>
               <Text style={[styles.badgeText, { color: theme.accentText }]}>{badgeLabel}</Text>

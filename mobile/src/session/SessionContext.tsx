@@ -13,6 +13,7 @@ import {
   type TokenPairResponse,
 } from "../api/auth";
 import { unregisterPushToken } from "../api/notifications";
+import { clearPersistedQueue } from "../offline/mutationQueueStorage";
 import { LAST_EXPO_PUSH_TOKEN_KEY } from "../pushTokenStorage";
 import { ANONYMOUS_USER_STORAGE_KEY, ensureAnonymousUserId } from "./anonymousUserId";
 import { setSessionInvalidateHandler } from "./sessionInvalidated";
@@ -174,6 +175,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    const uidToClear = authUserId ?? anonymousUserId;
+    if (uidToClear) {
+      await clearPersistedQueue(uidToClear);
+    }
     const access = getAccessTokenSync();
     const uidForPush = authUserId ?? anonymousUserId;
     if (access && uidForPush) {

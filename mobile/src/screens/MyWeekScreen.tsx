@@ -16,8 +16,11 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { ArrowLeft, Calendar, Target } from "lucide-react-native";
 import type { RootStackParamList } from "../../types/navigation";
+import { isLikelyNetworkFailure } from "../api/networkErrors";
 import { TaskItem, updateTaskCompletion, updateTaskNote, deleteTask } from "../api/tasks";
 import { TaskCard } from "../components/TaskCard";
+import { useMutationQueue } from "../offline/MutationQueueContext";
+import type { QueuedItem } from "../offline/mutationQueueStorage";
 import { useUserId } from "../state/user";
 import { useTasks } from "../hooks/useTasks";
 import { sortTasksBySchedule, getLocalDateKey } from "../utils/datetime";
@@ -27,6 +30,17 @@ import { useTheme } from "../theme";
 import type { ThemeTokens } from "../theme";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "MyWeek">;
+
+function labelForFailedQueueItem(item: QueuedItem, taskList: TaskItem[]): string {
+  if (item.type === "brain_dump_submit") {
+    return "Brain dump";
+  }
+  const title = taskList.find((t) => t.id === item.taskId)?.title ?? "Task";
+  if (item.type === "task_note") {
+    return `Note · ${title}`;
+  }
+  return title;
+}
 
 type TaskSection = {
   title: string;
@@ -60,6 +74,15 @@ export default function MyWeekScreen() {
     refetch,
     setTasks,
   } = useTasks(userId, { status: "active" });
+  const {
+    enqueueTaskCompletion,
+    enqueueTaskNote,
+    getTaskSyncStatus,
+    failed: syncFailed,
+    retryFailed,
+    clearFailed,
+    flush: flushMutationQueue,
+  } = useMutationQueue();
   const [actionError, setActionError] = useState<string | null>(null);
   const [noteRequestId, setNoteRequestId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -181,6 +204,7 @@ export default function MyWeekScreen() {
         duration_min: item.duration_min,
       }}
       onToggle={updatingId ? undefined : () => handleToggle(item)}
+      syncStatus={getTaskSyncStatus(item.id)}
       badgeLabel={null}
       onDelete={handleDeletePrompt}
       deleteDisabled={deletingId === item.id}
@@ -205,15 +229,24 @@ export default function MyWeekScreen() {
 
   const handleToggle = async (task: TaskItem) => {
     if (!userId || updatingId) return;
+    const nextCompleted = !task.completed;
     setUpdatingId(task.id);
     setActionError(null);
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, completed: nextCompleted } : t)));
     try {
-      const { result } = await updateTaskCompletion(task.id, userId, !task.completed);
+      const { result } = await updateTaskCompletion(task.id, userId, nextCompleted);
       setTasks((prev) =>
         prev.map((t) => (t.id === task.id ? { ...t, completed: result.completed } : t)),
       );
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Unable to update that task right now.");
+      if (isLikelyNetworkFailure(err)) {
+        enqueueTaskCompletion(task.id, nextCompleted);
+      } else {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === task.id ? { ...t, completed: task.completed } : t)),
+        );
+        setActionError(err instanceof Error ? err.message : "Unable to update that task right now.");
+      }
     } finally {
       setUpdatingId(null);
     }
@@ -246,7 +279,17 @@ export default function MyWeekScreen() {
       await refetch();
       closeNoteModal();
     } catch (err) {
-      setNoteError(err instanceof Error ? err.message : "Unable to save that note right now.");
+      if (isLikelyNetworkFailure(err)) {
+        const payload = trimmedNote ? trimmedNote : null;
+        enqueueTaskNote(noteTask.id, payload);
+        setTasks((prev) =>
+          prev.map((t) => (t.id === noteTask.id ? { ...t, note: payload } : t)),
+        );
+        setNoteRequestId(null);
+        closeNoteModal();
+      } else {
+        setNoteError(err instanceof Error ? err.message : "Unable to save that note right now.");
+      }
     } finally {
       setNoteSaving(false);
     }
@@ -270,7 +313,14 @@ export default function MyWeekScreen() {
       await refetch();
       closeNoteModal();
     } catch (err) {
-      setNoteError(err instanceof Error ? err.message : "Unable to clear that note right now.");
+      if (isLikelyNetworkFailure(err)) {
+        enqueueTaskNote(noteTask.id, null);
+        setTasks((prev) => prev.map((t) => (t.id === noteTask.id ? { ...t, note: null } : t)));
+        setNoteRequestId(null);
+        closeNoteModal();
+      } else {
+        setNoteError(err instanceof Error ? err.message : "Unable to clear that note right now.");
+      }
     } finally {
       setNoteSaving(false);
     }
@@ -475,6 +525,30 @@ export default function MyWeekScreen() {
             Daily view of all upcoming tasks.
           </Text>
         </View>
+
+        {syncFailed.length > 0 ? (
+          <View style={[styles.syncFailBanner, { borderColor, backgroundColor: surface }]}>
+            <Text style={[styles.syncFailTitle, { color: textPrimary }]}>Couldn&apos;t sync some changes</Text>
+            {syncFailed.map((f) => (
+              <View key={f.id} style={styles.syncFailRow}>
+                <Text style={[styles.syncFailLabel, { color: textSecondary }]} numberOfLines={2}>
+                  {labelForFailedQueueItem(f.item, tasks)}
+                </Text>
+                <View style={styles.syncFailActions}>
+                  <TouchableOpacity onPress={() => retryFailed(f.id)}>
+                    <Text style={{ color: accentColor, fontWeight: "600" }}>Retry</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => clearFailed(f.id)}>
+                    <Text style={{ color: textSecondary, marginLeft: 12 }}>Dismiss</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+            <TouchableOpacity onPress={() => void flushMutationQueue()} style={styles.syncAllButton}>
+              <Text style={{ color: accentColor, fontWeight: "600" }}>Try sync all</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {loading && !refreshing ? (
           <View style={styles.loadingBlock}>
@@ -756,6 +830,31 @@ const createStyles = (theme: ThemeTokens) => {
     createButtonText: {
       color: accentForeground,
       fontWeight: "700",
+    },
+    syncFailBanner: {
+      marginBottom: 16,
+      padding: 14,
+      borderRadius: 16,
+      borderWidth: 1,
+    },
+    syncFailTitle: {
+      fontSize: 15,
+      fontWeight: "700",
+      marginBottom: 8,
+    },
+    syncFailRow: {
+      marginTop: 8,
+    },
+    syncFailLabel: {
+      fontSize: 13,
+      marginBottom: 6,
+    },
+    syncFailActions: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    syncAllButton: {
+      marginTop: 12,
     },
     errorText: {
       marginTop: 12,

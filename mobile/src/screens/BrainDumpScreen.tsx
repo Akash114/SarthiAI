@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import {
   ActivityIndicator,
   Animated,
@@ -14,7 +17,11 @@ import {
 } from "react-native";
 import { CheckCircle2 } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
+import { isLikelyNetworkFailure } from "../api/networkErrors";
 import { submitBrainDump, BrainDumpResponse } from "../api/brainDump";
+import { useNetworkStatus } from "../hooks/useNetworkStatus";
+import { useMutationQueue } from "../offline/MutationQueueContext";
+import { brainDumpDraftKey, brainDumpPendingResultKey } from "../offline/mutationQueueStorage";
 import { useUserId } from "../state/user";
 import type { RootStackParamList } from "../../types/navigation";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -28,7 +35,7 @@ type SubmissionResult = {
   requestId: string | null;
 };
 
-type Step = "INTAKE" | "PROCESSING" | "ANALYSIS";
+type Step = "INTAKE" | "PROCESSING" | "ANALYSIS" | "QUEUED";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -37,6 +44,8 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 export default function BrainDumpScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { userId, loading: userLoading } = useUserId();
+  const { isOnline } = useNetworkStatus();
+  const { enqueueBrainDump } = useMutationQueue();
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [text, setText] = useState("");
@@ -44,11 +53,76 @@ export default function BrainDumpScreen() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SubmissionResult | null>(null);
   const [step, setStep] = useState<Step>("INTAKE");
+  const [queuedPreview, setQueuedPreview] = useState<string | null>(null);
+  const draftHydrated = useRef(false);
   const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    draftHydrated.current = false;
+  }, [userId]);
 
   const charCount = text.length;
   const trimmed = text.trim();
-  const canSubmit = !!trimmed && charCount <= MAX_LENGTH && !!userId && !loading;
+  const canSubmit =
+    !!trimmed && charCount <= MAX_LENGTH && !!userId && !loading && step === "INTAKE";
+
+  useEffect(() => {
+    if (!userId || draftHydrated.current) {
+      return;
+    }
+    draftHydrated.current = true;
+    (async () => {
+      const saved = await AsyncStorage.getItem(brainDumpDraftKey(userId));
+      if (saved) {
+        setText(saved);
+      }
+    })();
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+    const t = setTimeout(() => {
+      void AsyncStorage.setItem(brainDumpDraftKey(userId), text);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [text, userId]);
+
+  const applyPendingBrainDumpResult = useCallback(async () => {
+    if (!userId) {
+      return;
+    }
+    const raw = await AsyncStorage.getItem(brainDumpPendingResultKey(userId));
+    if (!raw) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { data: BrainDumpResponse; requestId: string | null };
+      await AsyncStorage.removeItem(brainDumpPendingResultKey(userId));
+      setResult({ response: parsed.data, requestId: parsed.requestId });
+      setStep("ANALYSIS");
+      setQueuedPreview(null);
+    } catch {
+      // ignore corrupt payload
+    }
+  }, [userId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void applyPendingBrainDumpResult();
+    }, [applyPendingBrainDumpResult]),
+  );
+
+  useEffect(() => {
+    if (step !== "QUEUED" || !userId) {
+      return;
+    }
+    const id = setInterval(() => {
+      void applyPendingBrainDumpResult();
+    }, 1500);
+    return () => clearInterval(id);
+  }, [step, userId, applyPendingBrainDumpResult]);
 
   useEffect(() => {
     if (step === "PROCESSING") {
@@ -67,20 +141,44 @@ export default function BrainDumpScreen() {
   const handleSubmit = async () => {
     if (!canSubmit || !userId) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+
+    if (!isOnline) {
+      const clientId = uuidv4();
+      enqueueBrainDump(trimmed, clientId);
+      await AsyncStorage.removeItem(brainDumpDraftKey(userId));
+      setQueuedPreview(trimmed);
+      setText("");
+      setError(null);
+      setResult(null);
+      setStep("QUEUED");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setStep("PROCESSING");
     setResult(null);
     try {
       const data = await submitBrainDump({ user_id: userId, text: trimmed });
+      await AsyncStorage.removeItem(brainDumpDraftKey(userId));
       setResult({ response: data.data, requestId: data.requestId });
       setText("");
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setStep("ANALYSIS");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setStep("INTAKE");
+      if (isLikelyNetworkFailure(err)) {
+        const clientId = uuidv4();
+        enqueueBrainDump(trimmed, clientId);
+        await AsyncStorage.removeItem(brainDumpDraftKey(userId));
+        setQueuedPreview(trimmed);
+        setText("");
+        setError(null);
+        setStep("QUEUED");
+      } else {
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setStep("INTAKE");
+      }
     } finally {
       setLoading(false);
     }
@@ -142,6 +240,21 @@ export default function BrainDumpScreen() {
               )}
             </TouchableOpacity>
           </>
+        ) : null}
+
+        {step === "QUEUED" ? (
+          <View style={styles.queuedBox}>
+            <Text style={styles.queuedTitle}>Queued for analysis</Text>
+            <Text style={styles.queuedHelper}>
+              We&apos;ll run analysis when you&apos;re back online. You can leave this screen — results appear here when
+              ready.
+            </Text>
+            {queuedPreview ? (
+              <Text style={styles.queuedPreview} numberOfLines={8}>
+                {queuedPreview}
+              </Text>
+            ) : null}
+          </View>
         ) : null}
 
         {step === "PROCESSING" ? (
@@ -289,6 +402,31 @@ const createStyles = (theme: ThemeTokens) => {
     error: {
       color: theme.danger,
       marginTop: 8,
+    },
+    queuedBox: {
+      marginTop: 8,
+      padding: 20,
+      borderRadius: 20,
+      backgroundColor: theme.card,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    queuedTitle: {
+      fontSize: 20,
+      fontWeight: "700",
+      color: theme.textPrimary,
+    },
+    queuedHelper: {
+      marginTop: 8,
+      color: theme.textSecondary,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    queuedPreview: {
+      marginTop: 12,
+      fontSize: 15,
+      color: theme.textMuted,
+      lineHeight: 22,
     },
     processing: {
       alignItems: "center",
