@@ -317,6 +317,7 @@ export default function HomeScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor }]} edges={["left", "right"]}>
       <View style={styles.flex}>
         <ScrollView
+          style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           showsVerticalScrollIndicator={false}
@@ -820,6 +821,9 @@ const createStyles = (theme: ThemeTokens, accentColor: string) => {
       backgroundColor: theme.background,
     },
     flex: {
+      flex: 1,
+    },
+    scroll: {
       flex: 1,
     },
     scrollContent: {
