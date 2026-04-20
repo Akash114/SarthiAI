@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The program stack targets PostgreSQL with SQLAlchemy and Alembic. Phase 1 needed an explicit migration workflow before schema work accelerates in Phase 2.
+The program stack targets PostgreSQL with SQLAlchemy and Alembic. An explicit migration workflow is required before schema work accelerates.
 
 ## Decision
 

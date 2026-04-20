@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-OpenAPI and mobile client need a single, explicit auth model. Supporting multiple auth styles in parallel would fragment Phase 2 implementation.
+OpenAPI and mobile client need a single, explicit auth model. Supporting multiple auth styles in parallel would fragment client and server implementation.
 
 ## Decision
 

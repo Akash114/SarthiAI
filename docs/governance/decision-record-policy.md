@@ -11,4 +11,4 @@ Any deviation from frozen product scope, public API contracts, or analytics taxo
 
 If a change conflicts with the frozen program intent until that intent is explicitly updated, **the frozen docs and contracts in `docs/` remain the default** for implementation.
 
-For the full program vision and delivery phases, maintainers may keep an authoritative copy outside git or in maintainer-only storage; this file only captures the **change-control bar**.
+For the full program vision and roadmap context, maintainers may keep an authoritative copy outside git or in maintainer-only storage; this file only captures the **change-control bar**.

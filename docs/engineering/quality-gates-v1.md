@@ -1,8 +1,8 @@
-# Engineering quality gates — v1 (through Phase 2 entry)
+# Engineering quality gates — v1
 
-This document ties the frozen product scope ([v1 scope](../product/v1-scope.md)) to **evidence** required before Android production (full hardening in Phase 3 per program roadmap).
+This document ties the frozen product scope ([v1 scope](../product/v1-scope.md)) to **evidence** required before Android production (full hardening and observability maturity follow as the stack stabilizes).
 
-## Phase 2 must produce (before broad UI expansion)
+## Core delivery evidence (before broad UI expansion)
 
 1. **Contract tests** for every **core** `/v1` endpoint:
    - Auth: login, refresh, logout (or equivalent session lifecycle defined in OpenAPI).
@@ -17,11 +17,11 @@ This document ties the frozen product scope ([v1 scope](../product/v1-scope.md))
 
 3. **Analytics instrumentation review**: implemented events are a subset of or equal to [taxonomy v1](../analytics/taxonomy-v1.md); no PII violations.
 
-## Deferred to Phase 3+ (do not block Phase 2 vertical slice)
+## Deferred (do not block the vertical slice)
 
 - Crash-free session SLO enforcement in release tooling.
 - Full OpenTelemetry deployment and SLO dashboards.
-- Staged rollout playbooks execution (Phase 4).
+- Staged rollout playbook execution.
 
 ## References
 

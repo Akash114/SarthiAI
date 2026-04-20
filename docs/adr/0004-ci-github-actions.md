@@ -14,11 +14,13 @@ Use **GitHub Actions** as the sole CI platform for SarthiAI. Minimum required wo
 
 | Workflow | Purpose | When it runs |
 | --- | --- | --- |
-| `ci.yml` (or split per package) | Lint, typecheck, unit tests | On PR and default branch |
-| Optional `mobile-build.yml` | EAS or `expo prebuild` sanity | Phase 2+ when app is buildable in CI |
-| Optional `contracts.yml` | Validate OpenAPI (Spectral or `openapi-cli validate`) | On PR when spec changes |
+| [`ci.yml`](../../.github/workflows/ci.yml) | **OpenAPI:** Redocly lint via `tooling/openapi` · **Backend:** `pip install -e ".[dev]"`, `pytest` · **Mobile:** `npm ci`, `typecheck`, `lint`, `test` | Pull requests and pushes to `main` |
+| [`openapi.yml`](../../.github/workflows/openapi.yml) | Same OpenAPI Redocly lint (path-filtered) | Push/PR when `docs/contracts/openapi.yaml`, `redocly.yaml`, or `tooling/openapi/` change |
+| [`maestro.yml`](../../.github/workflows/maestro.yml) | Manual dispatch only; echoes how to run Maestro locally | `workflow_dispatch` |
 
-Concrete job names and caching strategy are implementation details filled in when `backend/` and workflows land in Phase 2; this ADR locks the **platform** and **minimum gate types**.
+Optional later: `mobile-build.yml` (EAS or `expo prebuild` sanity) when builds should run on every PR.
+
+This ADR locks the **platform** and **minimum gate types**; the table above reflects the workflows that exist in-repo today.
 
 ## Rationale
 

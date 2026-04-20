@@ -25,7 +25,7 @@ Use **Redis** as the broker/result backend and **RQ** for job execution, with ex
 
 ## Android-first timeline impact
 
-Positive: faster path to a reliable worker loop and fewer infra footguns during Phase 2 vertical slice.
+Positive: faster path to a reliable worker loop and fewer infra footguns during the vertical slice.
 
 ## Rollback / migration
 

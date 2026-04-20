@@ -22,6 +22,22 @@ info:
 
     Failed requests return JSON bodies matching `Error` unless otherwise noted. HTTP status reflects class of failure (4xx client, 5xx server).
 
+    ## Legacy API (`old/` reference) vs v1
+
+    The pre-production tree under `old/` exposed **unversioned** routes (no `/v1` prefix) and a broader surface area. Android v1 clients **must** use `/v1` only. Intentional differences:
+
+    | Area | Legacy (`old/docs/backend_reference.md`) | v1 (`/v1` here) |
+    | --- | --- | --- |
+    | Versioning | Flat `/` routes | All product routes under `/v1` |
+    | Ops / jobs | `GET /jobs`, `POST /jobs/run-now` (debug-gated) | `GET /v1/ops/jobs`, `POST /v1/ops/jobs/run` with `X-Ops-Key` when `OPS_API_KEY` is set; returns **404** if ops is not configured |
+    | Agent / transparency | `GET /agent-log` (cursor on `AgentActionLog`) | `GET /v1/transparency-log` (same UX goal; current schema in components) |
+    | Tasks | `GET /tasks` (user-wide, filters) | `GET /v1/resolutions/{id}/tasks` (week-1 tasks for that resolution); aligns with single-resolution v1 scope |
+    | Resolution lifecycle | Intake → `decompose` → `approve` | Single active resolution + `POST .../generate-week-1` (async) per [product scope](../product/v1-scope.md) |
+    | Weekly plan (rolling) | `GET/POST /weekly-plan/*`, `GET/POST /interventions/*` snapshot APIs | Resolution-scoped preview/history (`week-1/preview`, `plan-history`, `plan-snapshots/{id}`) plus current intervention flow |
+    | Notifications config | `GET /notifications/config` | `GET /v1/notifications/config` |
+
+    Compatibility shims for legacy paths are **out of scope** for v1; migrate clients to OpenAPI operations in this file.
+
 servers:
   - url: "{scheme}://{host}"
     description: Configurable API origin (no default localhost in spec; set variables per environment)
@@ -52,8 +68,78 @@ tags:
     description: User-visible major system actions
   - name: devices
     description: Push notification registration
+  - name: weekly-plan
+    description: Week-1 preview and plan snapshot history
+  - name: dashboard
+    description: Aggregated progress for the home surface
+  - name: journey
+    description: Daily task focus
+  - name: ops
+    description: Operational controls (requires X-Ops-Key when configured)
+  - name: health
+    description: Liveness and readiness (not part of authenticated product API)
+  - name: preferences
+    description: Coaching nudges and reminder toggles
+  - name: brain-dump
+    description: Free-text reflection capture and signal extraction
 
 paths:
+  /health:
+    get:
+      tags: [health]
+      operationId: health_liveness
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /ready:
+    get:
+      tags: [health]
+      operationId: health_readiness
+      summary: Readiness probe (database + Redis)
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ready]
+        "503":
+          description: Dependency unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+
   /v1/auth/register:
     post:
       tags: [auth]
@@ -85,6 +171,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many auth requests from this client (rate limited)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /v1/auth/login:
     post:
@@ -107,6 +199,12 @@ paths:
                 $ref: "#/components/schemas/AuthTokenResponse"
         "401":
           description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many auth requests from this client (rate limited)
           content:
             application/json:
               schema:
@@ -137,6 +235,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many auth requests from this client (rate limited)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /v1/auth/logout:
     post:
@@ -156,6 +260,45 @@ paths:
           description: Logged out
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/auth/merge-anonymous:
+    post:
+      tags: [auth]
+      operationId: auth_merge_anonymous
+      summary: Merge a pre-account user id into the authenticated account
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeAnonymousRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MergeAnonymousResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Both accounts have data that cannot be merged automatically
           content:
             application/json:
               schema:
@@ -225,6 +368,87 @@ paths:
                 $ref: "#/components/schemas/OnboardingState"
         "400":
           description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/preferences:
+    get:
+      tags: [preferences]
+      operationId: preferences_get
+      summary: Get coaching preferences for reminders and interventions
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachingPreferencesState"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [preferences]
+      operationId: preferences_patch
+      summary: Update coaching preferences
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachingPreferencesPatchRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachingPreferencesState"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/brain-dump:
+    post:
+      tags: [brain-dump]
+      operationId: brain_dump_create
+      summary: Store a brain dump and return extracted signals
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrainDumpRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrainDumpResponse"
+        "400":
+          description: Validation error
           content:
             application/json:
               schema:
@@ -433,6 +657,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /v1/tasks/{task_id}:
+    get:
+      tags: [tasks]
+      operationId: task_get
+      summary: Get a single task by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [tasks]
+      operationId: task_patch
+      summary: Update task title or note (note stored in metadata)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskPatchRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /v1/tasks/{task_id}/complete:
     post:
       tags: [tasks]
@@ -556,6 +843,40 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /v1/transparency-log/{entry_id}:
+    get:
+      tags: [transparency]
+      operationId: transparency_log_entry_get
+      summary: Fetch one transparency log entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entry_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransparencyEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /v1/transparency-log:
     get:
       tags: [transparency]
@@ -578,6 +899,12 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+        - name: action_type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by stable action_type key
       responses:
         "200":
           description: OK
@@ -593,6 +920,27 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /v1/devices/push-token:
+    delete:
+      tags: [devices]
+      operationId: devices_push_token_unregister
+      summary: Remove a registered Expo push token for this user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenRegisterRequest"
+      responses:
+        "204":
+          description: Removed or already absent
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [devices]
       operationId: devices_push_token_register
@@ -618,6 +966,276 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/notifications/config:
+    get:
+      tags: [devices]
+      operationId: notifications_config_get
+      summary: Push notification feature flags for the client
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsConfigResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /v1/resolutions/{resolution_id}/week-1/preview:
+    post:
+      tags: [weekly-plan]
+      operationId: week1_preview_create
+      summary: Generate a week-1 preview and store a snapshot record
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ResolutionId"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Week1PreviewResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/resolutions/{resolution_id}/plan-history:
+    get:
+      tags: [weekly-plan]
+      operationId: plan_history_list
+      summary: List plan snapshots for a resolution
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ResolutionId"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanHistoryResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/plan-snapshots/{snapshot_id}:
+    get:
+      tags: [weekly-plan]
+      operationId: plan_snapshot_get
+      summary: Fetch a single plan snapshot by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: snapshot_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanSnapshotDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/dashboard:
+    get:
+      tags: [dashboard]
+      operationId: dashboard_get
+      summary: Aggregated resolution and intervention summary
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/journey/daily:
+    get:
+      tags: [journey]
+      operationId: journey_daily_get
+      summary: Open tasks for the current focus (week-1 loop)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyJourneyResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/interventions/history:
+    get:
+      tags: [interventions]
+      operationId: interventions_history_list
+      summary: Past non-pending interventions for the user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Intervention"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/ops/jobs:
+    get:
+      tags: [ops]
+      operationId: ops_jobs_config
+      summary: Scheduler-oriented job catalog (requires X-Ops-Key)
+      security: []
+      parameters:
+        - name: X-Ops-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpsJobsConfigResponse"
+        "401":
+          description: Invalid ops key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Ops disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/ops/jobs/run:
+    post:
+      tags: [ops]
+      operationId: ops_jobs_run
+      summary: Run an operational job (requires X-Ops-Key)
+      security: []
+      parameters:
+        - name: X-Ops-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpsJobRunRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpsJobRunResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid ops key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Ops disabled
           content:
             application/json:
               schema:
@@ -747,6 +1365,23 @@ components:
           type: string
           format: date-time
 
+    MergeAnonymousRequest:
+      type: object
+      required: [anonymous_user_id]
+      properties:
+        anonymous_user_id:
+          type: string
+          format: uuid
+
+    MergeAnonymousResponse:
+      type: object
+      required: [merged, message]
+      properties:
+        merged:
+          type: boolean
+        message:
+          type: string
+
     OnboardingState:
       type: object
       required: [status, step]
@@ -770,6 +1405,58 @@ components:
           type: boolean
           default: false
 
+    CoachingPreferencesState:
+      type: object
+      required: [coaching_paused, task_reminders_enabled, interventions_enabled]
+      properties:
+        coaching_paused:
+          type: boolean
+        task_reminders_enabled:
+          type: boolean
+        interventions_enabled:
+          type: boolean
+        timezone:
+          type: string
+          maxLength: 64
+        updated_at:
+          type: string
+          format: date-time
+
+    CoachingPreferencesPatchRequest:
+      type: object
+      properties:
+        coaching_paused:
+          type: boolean
+        task_reminders_enabled:
+          type: boolean
+        interventions_enabled:
+          type: boolean
+        timezone:
+          type: string
+          maxLength: 64
+
+    BrainDumpRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 20000
+
+    BrainDumpResponse:
+      type: object
+      required: [id, actionable, signals]
+      properties:
+        id:
+          type: string
+          format: uuid
+        actionable:
+          type: boolean
+        signals:
+          type: object
+          additionalProperties: true
+
     Resolution:
       type: object
       required: [id, title, status, created_at]
@@ -790,6 +1477,12 @@ components:
         week_1_plan_status:
           type: string
           enum: [not_requested, pending, ready, failed]
+        plan_metadata_json:
+          description: Opaque planner metadata (version, source, counts)
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
         created_at:
           type: string
           format: date-time
@@ -841,6 +1534,186 @@ components:
           type: string
           description: Present when accepted asynchronously
 
+    Week1PreviewTask:
+      type: object
+      required: [title, sort_order]
+      properties:
+        title:
+          type: string
+        sort_order:
+          type: integer
+
+    Week1PreviewResponse:
+      type: object
+      required: [planner_version, source, tasks, snapshot_id]
+      properties:
+        planner_version:
+          type: string
+        source:
+          type: string
+          description: heuristic or openai
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Week1PreviewTask"
+        snapshot_id:
+          type: string
+          format: uuid
+
+    PlanSnapshotItem:
+      type: object
+      required: [id, kind, planner_version, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        planner_version:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    PlanSnapshotDetail:
+      type: object
+      required: [id, kind, planner_version, tasks, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        planner_version:
+          type: string
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Week1PreviewTask"
+        created_at:
+          type: string
+          format: date-time
+
+    PlanHistoryResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanSnapshotItem"
+
+    DashboardResolutionSummary:
+      type: object
+      required: [id, title, week_1_plan_status, open_tasks, completed_tasks]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        week_1_plan_status:
+          type: string
+        open_tasks:
+          type: integer
+        completed_tasks:
+          type: integer
+
+    DashboardResponse:
+      type: object
+      required: [resolution, pending_intervention]
+      properties:
+        resolution:
+          anyOf:
+            - $ref: "#/components/schemas/DashboardResolutionSummary"
+            - type: "null"
+        pending_intervention:
+          type: boolean
+
+    JourneyTaskItem:
+      type: object
+      required: [id, title, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+        due_window_ends_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+
+    DailyJourneyResponse:
+      type: object
+      required: [date, tasks]
+      properties:
+        date:
+          type: string
+          format: date-time
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/JourneyTaskItem"
+
+    NotificationsConfigResponse:
+      type: object
+      required: [enabled, provider]
+      properties:
+        enabled:
+          type: boolean
+        provider:
+          type: string
+          enum: [expo, noop]
+
+    OpsJobsConfigResponse:
+      type: object
+      required: [scheduler_enabled, timezone, jobs]
+      properties:
+        scheduler_enabled:
+          type: boolean
+        timezone:
+          type: string
+        jobs:
+          type: array
+          items:
+            type: object
+            required: [id, description]
+            properties:
+              id:
+                type: string
+              description:
+                type: string
+
+    OpsJobRunRequest:
+      type: object
+      required: [job]
+      properties:
+        job:
+          type: string
+          enum: [reminders, week1_recover]
+        resolution_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
+
+    OpsJobRunResponse:
+      type: object
+      required: [job, processed]
+      properties:
+        job:
+          type: string
+        processed:
+          type: integer
+        detail:
+          oneOf:
+            - type: string
+            - type: "null"
+
     Task:
       type: object
       required: [id, resolution_id, title, status, sort_order]
@@ -865,6 +1738,20 @@ components:
         due_window_ends_at:
           type: string
           format: date-time
+        metadata_json:
+          type: object
+          additionalProperties: true
+
+    TaskPatchRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        note:
+          type: string
+          maxLength: 500
+          description: Empty string clears the note
 
     TaskListResponse:
       type: object

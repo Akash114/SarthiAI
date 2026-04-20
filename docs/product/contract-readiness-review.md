@@ -1,8 +1,10 @@
-# Phase 2 readiness review (Phase 1 exit)
+# Contract readiness review
 
-**Purpose:** Capture a short, explicit sign-off that Phase 1 artifacts are sufficient to start the Phase 2 vertical slice without expected contract churn. This document is the **process record** for the Phase 1 plan item “phase1-review”.
+**Note:** For Android pre-release sign-off, use [android-release-readiness.md](android-release-readiness.md).
 
-**How to use:** Mobile and backend leads (or named delegates) complete the checklist and sign below. If any item is “no”, open a decision record or update the frozen docs before merging Phase 2 scaffolding that depends on the contract.
+**Purpose:** Capture a short, explicit sign-off that frozen contracts and ADRs are sufficient to expand client and server implementation without expected contract churn.
+
+**How to use:** Mobile and backend leads (or named delegates) complete the checklist and sign below. If any item is “no”, open a decision record or update the frozen docs before merging work that depends on the contract.
 
 ---
 
@@ -23,7 +25,7 @@
 
 - [ ] [OpenAPI v1](../contracts/openapi.yaml) covers auth, onboarding, resolution, week-1 tasks, intervention, transparency log, and push registration.
 - [ ] Error envelope, idempotency, pagination, and changelog policy are understood by both client and server owners.
-- [ ] OpenAPI validates in CI or locally (e.g. Redocly) with **zero** errors on merge.
+- [ ] OpenAPI validates in CI (Redocly in `.github/workflows/ci.yml` → `openapi` job) or locally (e.g. [docs/contracts/README.md](../contracts/README.md)) with **zero** errors on merge.
 
 ### Analytics
 
@@ -32,7 +34,7 @@
 
 ### Quality gates linkage
 
-- [ ] [Quality gates v1](../engineering/quality-gates-v1.md) is acknowledged as the Phase 2 evidence bar (contract tests + Maestro smoke).
+- [ ] [Quality gates v1](../engineering/quality-gates-v1.md) is acknowledged as the evidence bar (contract tests + Maestro smoke).
 
 ---
 
@@ -53,4 +55,4 @@
 | Mobile lead | | | |
 | Backend lead | | | |
 
-By signing, both parties agree that **Phase 1 contracts are authoritative** for Phase 2 implementation unless superseded by a formal decision record.
+By signing, both parties agree that **frozen contracts and ADRs are authoritative** for implementation unless superseded by a formal decision record.

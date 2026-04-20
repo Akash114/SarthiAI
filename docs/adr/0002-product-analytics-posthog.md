@@ -15,7 +15,7 @@ Use **PostHog** for product analytics (cloud project for production; self-host n
 ## Rationale
 
 - **Engineering velocity:** SDK and event capture are straightforward for Expo/React Native and server-side events if needed later.
-- **Inspectability:** Live event stream and funnels help validate the Android-first loop during Phase 2–4.
+- **Inspectability:** Live event stream and funnels help validate the Android-first loop from first screens through production rollout.
 - **Cost and flexibility:** Pricing and feature set are acceptable for early-stage; open-source core aligns with project values if self-host becomes desirable.
 
 ## Alternatives considered
@@ -24,7 +24,7 @@ Use **PostHog** for product analytics (cloud project for production; self-host n
 
 ## Android-first timeline impact
 
-Neutral to positive: single vendor decision unblocks instrumentation in Phase 2 without parallel integrations.
+Neutral to positive: single vendor decision unblocks instrumentation early without parallel integrations.
 
 ## Rollback / migration
 

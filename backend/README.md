@@ -2,6 +2,12 @@
 
 FastAPI service implementing the frozen `/v1` contract ([docs/contracts/openapi.yaml](../docs/contracts/openapi.yaml)).
 
+## Environment and service keys
+
+Copy [.env.example](.env.example) to `.env`. **Postgres and Redis** URLs are required for a live API. **`JWT_SECRET`** is required; use a long random value in any deployed environment (see `validate_settings_for_environment` in [app/config.py](app/config.py)).
+
+Optional integrations: **Sentry** (`SENTRY_DSN`, optional `SENTRY_WORKER_DSN`), **PostHog** (`POSTHOG_API_KEY`, `POSTHOG_HOST`), **OpenAI** (`OPENAI_API_KEY`), **Expo push** (`EXPO_ACCESS_TOKEN` with `NOTIFICATIONS_ENABLED`), **OpenTelemetry** (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`). Where to obtain each key and how the mobile app mirrors PostHog/Sentry is documented in the root [README.md](../README.md#setup).
+
 ## Local development
 
 1. Start Postgres and Redis (optional: API + RQ worker in containers):

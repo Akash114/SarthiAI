@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The program reference calls for Jest + RNTL plus Detox **or** Maestro for smoke flows. Phase 2 requires an E2E smoke covering onboarding → task completion → intervention.
+The program reference calls for Jest + RNTL plus Detox **or** Maestro for smoke flows. The vertical slice requires an E2E smoke covering onboarding → task completion → intervention.
 
 ## Decision
 
@@ -16,7 +16,7 @@ Use **Maestro** for mobile E2E smoke tests on Android (primary). Continue using 
 
 - **Expo compatibility:** Maestro drives the built app via UI without deep native test harness wiring; generally lower friction for Expo-managed projects than Detox native setup.
 - **Authoring cost:** YAML flows are quick to iterate for a **single** critical smoke path in v1.
-- **CI fit:** Can run on emulator/CI with documented setup in Phase 2.
+- **CI fit:** Can run on emulator/CI with documented setup alongside the slice.
 
 ## Alternatives considered
 

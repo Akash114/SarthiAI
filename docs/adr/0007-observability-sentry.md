@@ -28,7 +28,7 @@ Default scrubbing:
 
 ## Android-first timeline impact
 
-Neutral: configure early in Phase 2 alongside first real screens and API.
+Neutral: configure early alongside first real screens and API.
 
 ## Rollback / migration
 

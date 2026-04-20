@@ -10,8 +10,8 @@ Program reference mandates React Native + Expo with EAS build/submit/update, And
 
 ## Decision
 
-- Use **Expo Application Services (EAS)** for Android **internal** and **preview** tracks first; production Play uploads follow the program’s staged rollout (Internal → Closed → production staged rollout) in Phase 4+.
-- **Environments:** `development`, `preview` (staging-like), `production` profiles in `eas.json` when added in Phase 2; secrets via EAS secrets, not committed.
+- Use **Expo Application Services (EAS)** for Android **internal** and **preview** tracks first; production Play uploads follow staged rollout (Internal → Closed → production staged rollout) when you reach that stage.
+- **Environments:** `development`, `preview` (staging-like), `production` profiles in `eas.json`; secrets via EAS secrets, not committed.
 - **OTA (EAS Update):** Allowed **only** for JavaScript/asset-only fixes that pass the same CI gates and do not change native code or permissions; feature work that touches native modules requires a new store build.
 
 ## Rationale

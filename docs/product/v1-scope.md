@@ -108,13 +108,13 @@ Targets are **directional** until baseline data exists; definitions are fixed so
 
 ## Engineering acceptance criteria stub
 
-Phase 2 must produce **evidence** listed in [quality gates v1](../engineering/quality-gates-v1.md): contract tests for core endpoints, E2E smoke for onboarding → task completion → intervention path, and alignment of analytics taxonomy with implemented events.
+Delivery must produce **evidence** listed in [quality gates v1](../engineering/quality-gates-v1.md): contract tests for core endpoints, E2E smoke for onboarding → task completion → intervention path, and alignment of analytics taxonomy with implemented events.
 
 ---
 
 ## Security and privacy baseline (v1 appendix)
 
-- **Transport:** TLS for all production API traffic; certificate pinning policy deferred to Phase 3 unless threat model requires earlier.
+- **Transport:** TLS for all production API traffic; certificate pinning policy deferred to a later hardening milestone unless threat model requires earlier.
 - **Tokens:** Mobile stores session secrets in **Expo SecureStore**; no long-lived tokens in plain app storage.
 - **Data minimization:** Analytics must follow [taxonomy PII rules](../analytics/taxonomy-v1.md); free-text prompts are **not** analytics properties.
 - **Transparency:** User-facing log mirrors major backend-side actions affecting the user; internal-only debug remains out of product UI.
@@ -124,3 +124,21 @@ Phase 2 must produce **evidence** listed in [quality gates v1](../engineering/qu
 ## Legacy boundary
 
 Code or assets under `old/` (when present) are **reference only**. No v1 feature work ships from legacy paths without meeting current contracts, tests, and security bar. Legacy code must not bypass the [decision record policy](../governance/decision-record-policy.md) for scope or contract changes.
+
+---
+
+## Legacy API parity (informative)
+
+Frozen v1 **does not** replicate every legacy endpoint. The following are **intentional** for Android v1; see also the **Legacy API** section in [contracts/openapi.yaml](../contracts/openapi.yaml).
+
+| Topic | Legacy behavior | v1 decision |
+| --- | --- | --- |
+| API prefix | Unversioned `/` routes | **`/v1` only** for product APIs |
+| Multiple resolutions list | `GET /resolutions` with filters | **Deferred:** v1 is **one active resolution**; use `GET /v1/resolutions/current` and create/patch flows |
+| Resolution decompose/approve steps | Separate `/decompose`, `/approve` | **Replaced** by week-1 generation (`generate-week-1`) and single-resolution model per normative constraints |
+| Global task inbox | `GET /tasks` with status/date filters | **Deferred:** tasks are listed under **`/v1/resolutions/{resolution_id}/tasks`** (week-1 scope) |
+| Rolling weekly plan + intervention snapshot CRUD | Top-level `/weekly-plan/*`, `/interventions/preview\|run\|history` | **Replaced** by resolution-scoped plan preview/history and **`/v1/interventions/*`** for the single intervention path |
+| Agent log naming | `agent-log` | **Renamed** to **`transparency-log`** (same product intent) |
+| Jobs / ops | `/jobs`, `/jobs/run-now` | **Replaced** by **`/v1/ops/jobs`** guarded by `X-Ops-Key` |
+
+Anything not required for the [quality gates](../engineering/quality-gates-v1.md) core `/v1` list is **post-v1 backlog** unless the decision record policy is followed.
