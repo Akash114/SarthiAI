@@ -330,7 +330,17 @@ export default function PersonalizationScreen() {
           <View style={styles.modalBackdrop}>
             <View style={[styles.modalCard, { backgroundColor: theme.card }]}>
               <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Select {timePicker.field} time</Text>
-              <DateTimePicker value={pickerValue} mode="time" display="spinner" onChange={handleTimeChange} />
+              <View style={styles.modalPickerShell}>
+                <DateTimePicker
+                  value={pickerValue}
+                  mode="time"
+                  display="spinner"
+                  themeVariant={theme.mode === "dark" ? "dark" : "light"}
+                  textColor={theme.textPrimary}
+                  style={styles.modalPickerIOS}
+                  onChange={handleTimeChange}
+                />
+              </View>
               <View style={styles.modalActions}>
                 <TouchableOpacity style={[styles.modalButton, styles.modalGhost]} onPress={closePicker}>
                   <Text style={[styles.modalButtonText, { color: theme.textSecondary }]}>Cancel</Text>
@@ -626,6 +636,15 @@ const createStyles = (theme: ThemeTokens) =>
       fontSize: 18,
       fontWeight: "600",
       marginBottom: 12,
+    },
+    modalPickerShell: {
+      width: "100%",
+      height: 216,
+      overflow: "hidden",
+    },
+    modalPickerIOS: {
+      width: "100%",
+      height: 216,
     },
     modalActions: {
       flexDirection: "row",

@@ -44,6 +44,22 @@ export type SessionContextValue = {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+/** Avoid indefinite hang when fetch has no timeout (e.g. wrong API host on device). */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error("timeout")), ms);
+    promise
+      .then((v) => {
+        clearTimeout(id);
+        resolve(v);
+      })
+      .catch((e) => {
+        clearTimeout(id);
+        reject(e);
+      });
+  });
+}
+
 function resolveProjectId(): string | undefined {
   return (
     Constants.expoConfig?.extra?.eas?.projectId ??
@@ -96,12 +112,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       if (hasRefreshToken()) {
         try {
-          const pair = await refreshTokens(getRefreshTokenSync()!);
+          const pair = await withTimeout(refreshTokens(getRefreshTokenSync()!), 15_000);
           await setTokensFromPair(pair);
           setAuthUserId(pair.user_id);
           setIsAuthenticated(true);
           try {
-            const me = await fetchAuthMe(pair.access_token);
+            const me = await withTimeout(fetchAuthMe(pair.access_token), 10_000);
             if (!cancelled) {
               setEmail(me.email ?? null);
             }

@@ -107,6 +107,44 @@ export default function TaskEditScreen() {
     return true;
   };
 
+  const openPickerWebFallback = (mode: "date" | "time") => {
+    const promptFn = (globalThis as { prompt?: (message?: string, defaultText?: string) => string | null }).prompt;
+    if (!promptFn) {
+      Alert.alert("Not supported", "Pick date and time on iOS or Android in the native app.");
+      return;
+    }
+    if (mode === "date") {
+      const raw = promptFn("Date (YYYY-MM-DD)", scheduledDay || "");
+      if (raw == null) return;
+      const trimmed = raw.trim();
+      if (!trimmed) return;
+      const parsed = parseDate(trimmed);
+      if (!parsed) {
+        Alert.alert("Invalid date", "Use YYYY-MM-DD.");
+        return;
+      }
+      applySelection("date", parsed);
+      return;
+    }
+    if (!scheduledDay) {
+      Alert.alert("Pick a date", "Choose a day before selecting a time.");
+      return;
+    }
+    const raw = promptFn("Time (24h HH:MM)", scheduledTime || "");
+    if (raw == null) return;
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    const normalized = /^\d{1,2}:\d{1,2}$/.test(trimmed)
+      ? `${trimmed.split(":")[0]!.padStart(2, "0")}:${trimmed.split(":")[1]!.padStart(2, "0")}`
+      : trimmed;
+    const parsed = parseTime(normalized);
+    if (!parsed) {
+      Alert.alert("Invalid time", "Use HH:MM (24 hour).");
+      return;
+    }
+    applySelection("time", parsed);
+  };
+
   const openPicker = (mode: "date" | "time") => {
     const value =
       mode === "date" ? parseDate(scheduledDay) ?? new Date() : parseTime(scheduledTime) ?? new Date();
@@ -129,7 +167,14 @@ export default function TaskEditScreen() {
       return;
     }
 
-    setPickerState({ mode, value });
+    if (Platform.OS === "web") {
+      openPickerWebFallback(mode);
+      return;
+    }
+
+    if (Platform.OS === "ios") {
+      setPickerState({ mode, value });
+    }
   };
 
   const handlePickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
@@ -155,65 +200,72 @@ export default function TaskEditScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Edit Task</Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+    <>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>Edit Task</Text>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Text style={styles.label}>Title</Text>
-      <TextInput
-        value={title}
-        onChangeText={setTitle}
-        style={styles.input}
-        placeholder="Task title"
-        placeholderTextColor={theme.textMuted}
-      />
+        <Text style={styles.label}>Title</Text>
+        <TextInput
+          value={title}
+          onChangeText={setTitle}
+          style={styles.input}
+          placeholder="Task title"
+          placeholderTextColor={theme.textMuted}
+        />
 
-      <View style={styles.row}>
-        <Text style={styles.label}>Completed</Text>
-        <Switch value={completed} onValueChange={setCompleted} />
-      </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>Completed</Text>
+          <Switch value={completed} onValueChange={setCompleted} />
+        </View>
 
-      <Text style={styles.label}>Scheduled Day</Text>
-      <TouchableOpacity style={styles.input} onPress={() => openPicker("date")}>
-        <Text style={scheduledDay ? styles.valueText : styles.placeholderText}>
-          {scheduledDay || "Pick a date"}
-        </Text>
-      </TouchableOpacity>
+        <Text style={styles.label}>Scheduled Day</Text>
+        <TouchableOpacity style={styles.input} onPress={() => openPicker("date")}>
+          <Text style={scheduledDay ? styles.valueText : styles.placeholderText}>
+            {scheduledDay || "Pick a date"}
+          </Text>
+        </TouchableOpacity>
 
-      <Text style={styles.label}>Scheduled Time</Text>
-      <TouchableOpacity style={styles.input} onPress={() => openPicker("time")}>
-        <Text style={scheduledTime ? styles.valueText : styles.placeholderText}>
-          {scheduledTime || "Pick a time"}
-        </Text>
-      </TouchableOpacity>
+        <Text style={styles.label}>Scheduled Time</Text>
+        <TouchableOpacity style={styles.input} onPress={() => openPicker("time")}>
+          <Text style={scheduledTime ? styles.valueText : styles.placeholderText}>
+            {scheduledTime || "Pick a time"}
+          </Text>
+        </TouchableOpacity>
 
-      <Text style={styles.label}>Notes</Text>
-      <TextInput
-        value={note}
-        onChangeText={setNote}
-        style={[styles.input, styles.noteInput]}
-        placeholder="Add a note..."
-        placeholderTextColor={theme.textMuted}
-        multiline
-      />
+        <Text style={styles.label}>Notes</Text>
+        <TextInput
+          value={note}
+          onChangeText={setNote}
+          style={[styles.input, styles.noteInput]}
+          placeholder="Add a note..."
+          placeholderTextColor={theme.textMuted}
+          multiline
+        />
 
-      <TouchableOpacity style={[styles.button, saving && styles.buttonDisabled]} onPress={handleSave} disabled={saving}>
-        {saving ? (
-          <ActivityIndicator color={theme.mode === "dark" ? theme.textPrimary : "#fff"} />
-        ) : (
-          <Text style={styles.buttonText}>Save Changes</Text>
-        )}
-      </TouchableOpacity>
-      {pickerState ? (
-        <Modal transparent animationType="fade" visible={true}>
+        <TouchableOpacity style={[styles.button, saving && styles.buttonDisabled]} onPress={handleSave} disabled={saving}>
+          {saving ? (
+            <ActivityIndicator color={theme.mode === "dark" ? theme.textPrimary : "#fff"} />
+          ) : (
+            <Text style={styles.buttonText}>Save Changes</Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+      {pickerState && Platform.OS === "ios" ? (
+        <Modal transparent animationType="fade" visible onRequestClose={() => setPickerState(null)}>
           <View style={styles.pickerOverlay}>
             <View style={styles.pickerCard}>
-              <DateTimePicker
-                value={pickerState.value}
-                mode={pickerState.mode}
-                display="spinner"
-                onChange={handlePickerChange}
-              />
+              <View style={styles.pickerWheelShell}>
+                <DateTimePicker
+                  value={pickerState.value}
+                  mode={pickerState.mode}
+                  display="spinner"
+                  themeVariant={theme.mode === "dark" ? "dark" : "light"}
+                  textColor={theme.textPrimary}
+                  style={styles.pickerIOSNative}
+                  onChange={handlePickerChange}
+                />
+              </View>
               <View style={styles.pickerActions}>
                 <TouchableOpacity style={styles.pickerButton} onPress={() => setPickerState(null)}>
                   <Text style={styles.pickerButtonText}>Cancel</Text>
@@ -226,7 +278,7 @@ export default function TaskEditScreen() {
           </View>
         </Modal>
       ) : null}
-    </ScrollView>
+    </>
   );
 }
 
@@ -308,11 +360,21 @@ const createStyles = (theme: ThemeTokens) => {
     },
     pickerCard: {
       width: "100%",
+      maxWidth: 400,
       backgroundColor: theme.card,
       borderRadius: 16,
       padding: 12,
       borderWidth: 1,
       borderColor: theme.border,
+    },
+    pickerWheelShell: {
+      width: "100%",
+      height: 216,
+      overflow: "hidden",
+    },
+    pickerIOSNative: {
+      width: "100%",
+      height: 216,
     },
     pickerActions: {
       flexDirection: "row",

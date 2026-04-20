@@ -87,6 +87,44 @@ export default function TaskCreateScreen() {
     return true;
   };
 
+  const openPickerWebFallback = (mode: "date" | "time") => {
+    const promptFn = (globalThis as { prompt?: (message?: string, defaultText?: string) => string | null }).prompt;
+    if (!promptFn) {
+      Alert.alert("Not supported", "Pick date and time on iOS or Android in the native app.");
+      return;
+    }
+    if (mode === "date") {
+      const raw = promptFn("Date (YYYY-MM-DD)", scheduledDay || "");
+      if (raw == null) return;
+      const trimmed = raw.trim();
+      if (!trimmed) return;
+      const parsed = parseDate(trimmed);
+      if (!parsed) {
+        Alert.alert("Invalid date", "Use YYYY-MM-DD.");
+        return;
+      }
+      applySelection("date", parsed);
+      return;
+    }
+    if (!scheduledDay) {
+      Alert.alert("Pick a date", "Choose a day before selecting a time.");
+      return;
+    }
+    const raw = promptFn("Time (24h HH:MM)", scheduledTime || "");
+    if (raw == null) return;
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    const normalized = /^\d{1,2}:\d{1,2}$/.test(trimmed)
+      ? `${trimmed.split(":")[0]!.padStart(2, "0")}:${trimmed.split(":")[1]!.padStart(2, "0")}`
+      : trimmed;
+    const parsed = parseTime(normalized);
+    if (!parsed) {
+      Alert.alert("Invalid time", "Use HH:MM (24 hour).");
+      return;
+    }
+    applySelection("time", parsed);
+  };
+
   const openPicker = (mode: "date" | "time") => {
     const value =
       mode === "date" ? parseDate(scheduledDay) ?? new Date() : parseTime(scheduledTime) ?? new Date();
@@ -109,7 +147,14 @@ export default function TaskCreateScreen() {
       return;
     }
 
-    setPickerState({ mode, value });
+    if (Platform.OS === "web") {
+      openPickerWebFallback(mode);
+      return;
+    }
+
+    if (Platform.OS === "ios") {
+      setPickerState({ mode, value });
+    }
   };
 
   const closePicker = () => setPickerState(null);
@@ -128,71 +173,78 @@ export default function TaskCreateScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>New Task</Text>
-      <Text style={styles.subtitle}>Create a quick standalone task for this week.</Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+    <>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>New Task</Text>
+        <Text style={styles.subtitle}>Create a quick standalone task for this week.</Text>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Text style={styles.label}>Title</Text>
-      <TextInput
-        style={styles.input}
-        value={title}
-        onChangeText={setTitle}
-        placeholder="e.g., Review project brief"
-        placeholderTextColor={theme.textMuted}
-      />
+        <Text style={styles.label}>Title</Text>
+        <TextInput
+          style={styles.input}
+          value={title}
+          onChangeText={setTitle}
+          placeholder="e.g., Review project brief"
+          placeholderTextColor={theme.textMuted}
+        />
 
-      <Text style={styles.label}>Scheduled Day (optional)</Text>
-      <TouchableOpacity style={styles.input} onPress={() => openPicker("date")}>
-        <Text style={scheduledDay ? styles.pickerValue : styles.placeholder}>
-          {scheduledDay ? scheduledDay : "Pick a date"}
-        </Text>
-      </TouchableOpacity>
+        <Text style={styles.label}>Scheduled Day (optional)</Text>
+        <TouchableOpacity style={styles.input} onPress={() => openPicker("date")}>
+          <Text style={scheduledDay ? styles.pickerValue : styles.placeholder}>
+            {scheduledDay ? scheduledDay : "Pick a date"}
+          </Text>
+        </TouchableOpacity>
 
-      <Text style={styles.label}>Scheduled Time (optional)</Text>
-      <TouchableOpacity style={styles.input} onPress={() => openPicker("time")}>
-        <Text style={scheduledTime ? styles.pickerValue : styles.placeholder}>
-          {scheduledTime ? scheduledTime : "Pick a time"}
-        </Text>
-      </TouchableOpacity>
+        <Text style={styles.label}>Scheduled Time (optional)</Text>
+        <TouchableOpacity style={styles.input} onPress={() => openPicker("time")}>
+          <Text style={scheduledTime ? styles.pickerValue : styles.placeholder}>
+            {scheduledTime ? scheduledTime : "Pick a time"}
+          </Text>
+        </TouchableOpacity>
 
-      <Text style={styles.label}>Duration (minutes)</Text>
-      <TextInput
-        style={styles.input}
-        value={duration}
-        onChangeText={setDuration}
-        placeholder="30"
-        placeholderTextColor={theme.textMuted}
-        keyboardType="numeric"
-      />
+        <Text style={styles.label}>Duration (minutes)</Text>
+        <TextInput
+          style={styles.input}
+          value={duration}
+          onChangeText={setDuration}
+          placeholder="30"
+          placeholderTextColor={theme.textMuted}
+          keyboardType="numeric"
+        />
 
-      <Text style={styles.label}>Notes</Text>
-      <TextInput
-        style={[styles.input, styles.noteInput]}
-        value={note}
-        onChangeText={setNote}
-        placeholder="Add context or prep details…"
-        placeholderTextColor={theme.textMuted}
-        multiline
-      />
+        <Text style={styles.label}>Notes</Text>
+        <TextInput
+          style={[styles.input, styles.noteInput]}
+          value={note}
+          onChangeText={setNote}
+          placeholder="Add context or prep details…"
+          placeholderTextColor={theme.textMuted}
+          multiline
+        />
 
-      <TouchableOpacity style={[styles.button, saving && styles.buttonDisabled]} onPress={handleCreate} disabled={saving}>
-        {saving ? (
-          <ActivityIndicator color={theme.mode === "dark" ? theme.textPrimary : "#fff"} />
-        ) : (
-          <Text style={styles.buttonText}>Create Task</Text>
-        )}
-      </TouchableOpacity>
-      {pickerState ? (
-        <Modal transparent animationType="fade" visible={true}>
+        <TouchableOpacity style={[styles.button, saving && styles.buttonDisabled]} onPress={handleCreate} disabled={saving}>
+          {saving ? (
+            <ActivityIndicator color={theme.mode === "dark" ? theme.textPrimary : "#fff"} />
+          ) : (
+            <Text style={styles.buttonText}>Create Task</Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+      {pickerState && Platform.OS === "ios" ? (
+        <Modal transparent animationType="fade" visible onRequestClose={closePicker}>
           <View style={styles.pickerOverlay}>
             <View style={styles.pickerCard}>
-              <DateTimePicker
-                value={pickerState.value}
-                mode={pickerState.mode}
-                display="spinner"
-                onChange={handlePickerChange}
-              />
+              <View style={styles.pickerWheelShell}>
+                <DateTimePicker
+                  value={pickerState.value}
+                  mode={pickerState.mode}
+                  display="spinner"
+                  themeVariant={theme.mode === "dark" ? "dark" : "light"}
+                  textColor={theme.textPrimary}
+                  style={styles.pickerIOSNative}
+                  onChange={handlePickerChange}
+                />
+              </View>
               <View style={styles.pickerActions}>
                 <TouchableOpacity style={styles.pickerButton} onPress={closePicker}>
                   <Text style={styles.pickerButtonText}>Cancel</Text>
@@ -205,7 +257,7 @@ export default function TaskCreateScreen() {
           </View>
         </Modal>
       ) : null}
-    </ScrollView>
+    </>
   );
 }
 
@@ -276,11 +328,21 @@ const createStyles = (theme: ThemeTokens) => {
     },
     pickerCard: {
       width: "100%",
+      maxWidth: 400,
       backgroundColor: theme.card,
       borderRadius: 16,
       padding: 12,
       borderWidth: 1,
       borderColor: theme.border,
+    },
+    pickerWheelShell: {
+      width: "100%",
+      height: 216,
+      overflow: "hidden",
+    },
+    pickerIOSNative: {
+      width: "100%",
+      height: 216,
     },
     pickerActions: {
       flexDirection: "row",

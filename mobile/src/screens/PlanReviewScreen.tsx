@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { approveResolution, TaskEditPayload, ApprovalResponse, WeekPlanTask } from "../api/resolutions";
 import { useUserId } from "../state/user";
 import { EditableTask, useResolutionPlan } from "../hooks/useResolutionPlan";
@@ -152,8 +152,46 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
     ]);
   };
 
+  const commitPlanDateTime = (taskId: string, mode: "date" | "time", value: Date): boolean => {
+    const target = tasks.find((task) => task.id === taskId);
+    if (!target) return false;
+    const ignoreTimes = target.original?.scheduled_time ? [target.original.scheduled_time] : [];
+    if (mode === "date") {
+      const formattedDay = formatDate(value);
+      if (target.scheduled_time && isSlotTaken(formattedDay, target.scheduled_time, { ignoreTimes })) {
+        Alert.alert("Slot taken", "Another task already uses that day/time.");
+        return false;
+      }
+      updateTaskField(taskId, "scheduled_day", formattedDay);
+      return true;
+    }
+    if (!target.scheduled_day) {
+      Alert.alert("Pick a date", "Select a day before setting a time.");
+      return false;
+    }
+    const formattedTime = formatTime(value);
+    if (isSlotTaken(target.scheduled_day, formattedTime, { ignoreTimes })) {
+      Alert.alert("Slot taken", "Another task already uses that time.");
+      return false;
+    }
+    updateTaskField(taskId, "scheduled_time", formattedTime);
+    return true;
+  };
+
   const openDatePicker = (task: EditableTask) => {
     const value = parseDate(task.scheduled_day) ?? new Date();
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        mode: "date",
+        value,
+        onChange: (_event, selectedDate) => {
+          if (selectedDate) {
+            commitPlanDateTime(task.id, "date", selectedDate);
+          }
+        },
+      });
+      return;
+    }
     setPickerState({
       taskId: task.id,
       mode: "date",
@@ -167,6 +205,19 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
       return;
     }
     const value = parseTime(task.scheduled_time) ?? new Date();
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        mode: "time",
+        value,
+        is24Hour: true,
+        onChange: (_event, selectedDate) => {
+          if (selectedDate) {
+            commitPlanDateTime(task.id, "time", selectedDate);
+          }
+        },
+      });
+      return;
+    }
     setPickerState({
       taskId: task.id,
       mode: "time",
@@ -178,32 +229,9 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
 
   const confirmPicker = () => {
     if (!pickerState) return;
-    const target = tasks.find((task) => task.id === pickerState.taskId);
-    if (!target) {
+    if (commitPlanDateTime(pickerState.taskId, pickerState.mode, pickerState.value)) {
       closePicker();
-      return;
     }
-    const ignoreTimes = target.original?.scheduled_time ? [target.original.scheduled_time] : [];
-    if (pickerState.mode === "date") {
-      const formattedDay = formatDate(pickerState.value);
-      if (target.scheduled_time && isSlotTaken(formattedDay, target.scheduled_time, { ignoreTimes })) {
-        Alert.alert("Slot taken", "Another task already uses that day/time.");
-        return;
-      }
-      updateTaskField(pickerState.taskId, "scheduled_day", formattedDay);
-    } else {
-      if (!target.scheduled_day) {
-        Alert.alert("Pick a date", "Select a day before setting a time.");
-        return;
-      }
-      const formattedTime = formatTime(pickerState.value);
-      if (isSlotTaken(target.scheduled_day, formattedTime, { ignoreTimes })) {
-        Alert.alert("Slot taken", "Another task already uses that time.");
-        return;
-      }
-      updateTaskField(pickerState.taskId, "scheduled_time", formattedTime);
-    }
-    closePicker();
   };
 
   const handleAccept = async () => {
@@ -589,23 +617,28 @@ export default function PlanReviewScreen({ route, navigation }: Props) {
         ) : null}
       </View>
 
-      {pickerState ? (
-        <Modal transparent animationType="fade">
+      {pickerState && Platform.OS === "ios" ? (
+        <Modal transparent animationType="fade" visible onRequestClose={closePicker}>
           <View style={[styles.pickerBackdrop, { backgroundColor: theme.overlay }]}>
             <View style={[styles.pickerCard, { backgroundColor: surface }]}>
               <Text style={[styles.sectionTitleSerif, { color: textPrimary, marginBottom: 12 }]}>
                 {pickerState.mode === "date" ? "Pick a date" : "Pick a time"}
               </Text>
-              <DateTimePicker
-                value={pickerState.value}
-                mode={pickerState.mode}
-                display="spinner"
-                onChange={(_, date) => {
-                  if (date) {
-                    setPickerState((prev) => (prev ? { ...prev, value: date } : prev));
-                  }
-                }}
-              />
+              <View style={styles.pickerWheelShell}>
+                <DateTimePicker
+                  value={pickerState.value}
+                  mode={pickerState.mode}
+                  display="spinner"
+                  themeVariant={theme.mode === "dark" ? "dark" : "light"}
+                  textColor={textPrimary}
+                  style={styles.pickerIOSNative}
+                  onChange={(_, date) => {
+                    if (date) {
+                      setPickerState((prev) => (prev ? { ...prev, value: date } : prev));
+                    }
+                  }}
+                />
+              </View>
               <View style={styles.pickerActions}>
                 <TouchableOpacity style={[styles.modalButton, { borderColor }]} onPress={closePicker}>
                   <Text style={[styles.secondaryText, { color: textSecondary }]}>Cancel</Text>
@@ -881,6 +914,18 @@ const styles = StyleSheet.create({
   pickerCard: {
     borderRadius: 18,
     padding: 20,
+    maxWidth: 420,
+    width: "100%",
+    alignSelf: "center",
+  },
+  pickerWheelShell: {
+    width: "100%",
+    height: 216,
+    overflow: "hidden",
+  },
+  pickerIOSNative: {
+    width: "100%",
+    height: 216,
   },
   pickerActions: {
     flexDirection: "row",
