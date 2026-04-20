@@ -1,0 +1,954 @@
+openapi: 3.1.0
+info:
+  title: Sarthi API
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  description: |
+    Public HTTP API for Sarthi v1 (Android-first).
+
+    ## Changelog policy
+
+    - **Patch (1.0.x):** Documentation-only or clarifications that do not change wire compatibility.
+    - **Additive (1.x.0):** New optional fields on responses, new optional query parameters, new endpoints, new enum values **only** when clients are written to ignore unknown values. Prefer additive evolution within `/v1` while Android v1 is live.
+    - **Breaking:** Renames, removed fields, changed types, new required fields on requests, or semantic changes require **`/v2`** (or a negotiated major version) and a migration window documented in ADRs.
+
+    ## Idempotency
+
+    Clients **may** send `Idempotency-Key` (unique string, stable per logical retry) on marked mutating requests. Servers **must** deduplicate such that retries return the same successful outcome without duplicate side effects.
+
+    ## Errors
+
+    Failed requests return JSON bodies matching `Error` unless otherwise noted. HTTP status reflects class of failure (4xx client, 5xx server).
+
+servers:
+  - url: "{scheme}://{host}"
+    description: Configurable API origin (no default localhost in spec; set variables per environment)
+    variables:
+      scheme:
+        default: https
+        enum: [https, http]
+      host:
+        default: api.sarthi.invalid
+        description: >
+          Replace with the real production host when known. Use a dev host
+          value in local tooling (not embedded here to satisfy generic lint rules).
+
+tags:
+  - name: auth
+    description: Registration, session tokens, logout
+  - name: users
+    description: Current user profile
+  - name: onboarding
+    description: First-run onboarding state machine
+  - name: resolutions
+    description: Single active resolution and week-1 plan generation
+  - name: tasks
+    description: Week-1 actionable tasks
+  - name: interventions
+    description: Single v1 intervention path with explicit approval
+  - name: transparency
+    description: User-visible major system actions
+  - name: devices
+    description: Push notification registration
+
+paths:
+  /v1/auth/register:
+    post:
+      tags: [auth]
+      operationId: auth_register
+      summary: Register a new account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRegisterRequest"
+      responses:
+        "201":
+          description: Created; returns tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/auth/login:
+    post:
+      tags: [auth]
+      operationId: auth_login
+      summary: Obtain tokens with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLoginRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: auth_refresh
+      summary: Rotate access token using refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRefreshRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "401":
+          description: Invalid or revoked refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      operationId: auth_logout
+      summary: Revoke current refresh token (and optionally all sessions)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLogoutRequest"
+      responses:
+        "204":
+          description: Logged out
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/me:
+    get:
+      tags: [users]
+      operationId: me_get
+      summary: Current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/onboarding:
+    get:
+      tags: [onboarding]
+      operationId: onboarding_get
+      summary: Get onboarding state
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingState"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [onboarding]
+      operationId: onboarding_patch
+      summary: Advance or update onboarding
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingPatchRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingState"
+        "400":
+          description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/resolutions/current:
+    get:
+      tags: [resolutions]
+      operationId: resolutions_current_get
+      summary: Get the current active resolution if any
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK (body may be null when none)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolutionCurrentResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/resolutions:
+    post:
+      tags: [resolutions]
+      operationId: resolutions_create
+      summary: Create a resolution (fails if another is active)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolutionCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resolution"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Active resolution already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/resolutions/{resolution_id}:
+    parameters:
+      - $ref: "#/components/parameters/ResolutionId"
+    get:
+      tags: [resolutions]
+      operationId: resolutions_get
+      summary: Get resolution by id
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resolution"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [resolutions]
+      operationId: resolutions_patch
+      summary: Update or complete a resolution
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolutionPatchRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resolution"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/resolutions/{resolution_id}/generate-week-1:
+    post:
+      tags: [resolutions]
+      operationId: resolutions_generate_week_1
+      summary: Enqueue or run week-1 plan generation for the resolution
+      description: |
+        Idempotent: replays with the same `Idempotency-Key` must not create duplicate tasks.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ResolutionId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Accepted (async job) or 200 if synchronous implementation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateWeek1Response"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Week-1 already generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/resolutions/{resolution_id}/tasks:
+    get:
+      tags: [tasks]
+      operationId: tasks_list_week_1
+      summary: List week-1 tasks for a resolution
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ResolutionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/tasks/{task_id}/complete:
+    post:
+      tags: [tasks]
+      operationId: tasks_complete
+      summary: Mark a task complete (idempotent)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: OK (already complete is still 200)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/interventions/current:
+    get:
+      tags: [interventions]
+      operationId: interventions_current_get
+      summary: Get current pending intervention if any
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterventionCurrentResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/interventions/{intervention_id}/approve:
+    post:
+      tags: [interventions]
+      operationId: interventions_approve
+      summary: Approve the pending intervention
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/InterventionId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Intervention"
+        "400":
+          description: Not pending or invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/interventions/{intervention_id}/dismiss:
+    post:
+      tags: [interventions]
+      operationId: interventions_dismiss
+      summary: Dismiss the pending intervention (product “reject” / decline path for v1)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/InterventionId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Intervention"
+        "400":
+          description: Not pending or invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/transparency-log:
+    get:
+      tags: [transparency]
+      operationId: transparency_log_list
+      summary: Page through transparency log entries (newest first)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor from previous response
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransparencyLogPage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/devices/push-token:
+    post:
+      tags: [devices]
+      operationId: devices_push_token_register
+      summary: Register or replace Expo push token for this device
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenRegisterRequest"
+      responses:
+        "204":
+          description: Stored
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      description: Unique key for safe retries on supporting mutations
+
+    ResolutionId:
+      name: resolution_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    InterventionId:
+      name: intervention_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable error code
+        message:
+          type: string
+          description: Human-readable summary safe to show or log
+        request_id:
+          type: string
+          description: Correlates to server logs / tracing
+        details:
+          type: object
+          additionalProperties: true
+          description: Optional structured context (avoid PII)
+
+    User:
+      type: object
+      required: [id, email]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+
+    AuthRegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 256
+
+    AuthLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthRefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    AuthLogoutRequest:
+      type: object
+      properties:
+        revoke_all:
+          type: boolean
+          default: false
+          description: If true, revoke all refresh tokens for the user
+
+    AuthTokenResponse:
+      type: object
+      required: [access_token, access_expires_at, refresh_token, refresh_expires_at]
+      properties:
+        access_token:
+          type: string
+        access_expires_at:
+          type: string
+          format: date-time
+        refresh_token:
+          type: string
+        refresh_expires_at:
+          type: string
+          format: date-time
+
+    OnboardingState:
+      type: object
+      required: [status, step]
+      properties:
+        status:
+          type: string
+          enum: [not_started, in_progress, completed]
+        step:
+          type: string
+          description: Opaque step key for client UI routing
+        updated_at:
+          type: string
+          format: date-time
+
+    OnboardingPatchRequest:
+      type: object
+      properties:
+        step:
+          type: string
+        mark_completed:
+          type: boolean
+          default: false
+
+    Resolution:
+      type: object
+      required: [id, title, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 200
+        detail:
+          type: string
+          maxLength: 8000
+          description: User brain-dump text; treat as sensitive in logs
+        status:
+          type: string
+          enum: [draft, active, completed, abandoned]
+        week_1_plan_status:
+          type: string
+          enum: [not_requested, pending, ready, failed]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ResolutionCurrentResponse:
+      type: object
+      required: [resolution]
+      properties:
+        resolution:
+          anyOf:
+            - $ref: "#/components/schemas/Resolution"
+            - type: "null"
+
+    ResolutionCreateRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        detail:
+          type: string
+          maxLength: 8000
+
+    ResolutionPatchRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        detail:
+          type: string
+          maxLength: 8000
+        status:
+          type: string
+          enum: [draft, active, completed, abandoned]
+
+    GenerateWeek1Response:
+      type: object
+      required: [week_1_plan_status]
+      properties:
+        week_1_plan_status:
+          type: string
+          enum: [not_requested, pending, ready, failed]
+        job_id:
+          type: string
+          description: Present when accepted asynchronously
+
+    Task:
+      type: object
+      required: [id, resolution_id, title, status, sort_order]
+      properties:
+        id:
+          type: string
+          format: uuid
+        resolution_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 500
+        status:
+          type: string
+          enum: [open, completed, skipped]
+        sort_order:
+          type: integer
+        due_window_starts_at:
+          type: string
+          format: date-time
+        due_window_ends_at:
+          type: string
+          format: date-time
+
+    TaskListResponse:
+      type: object
+      required: [tasks]
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+
+    Intervention:
+      type: object
+      required: [id, status, summary]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, approved, dismissed, expired]
+        summary:
+          type: string
+          maxLength: 2000
+        created_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+
+    InterventionCurrentResponse:
+      type: object
+      required: [intervention]
+      properties:
+        intervention:
+          anyOf:
+            - $ref: "#/components/schemas/Intervention"
+            - type: "null"
+
+    TransparencyEntry:
+      type: object
+      required: [id, action_type, headline, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        action_type:
+          type: string
+          description: Stable taxonomy key, e.g. `plan_generated`
+        headline:
+          type: string
+          maxLength: 500
+        detail:
+          type: string
+          maxLength: 4000
+        created_at:
+          type: string
+          format: date-time
+
+    TransparencyLogPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransparencyEntry"
+        next_cursor:
+          type: ["string", "null"]
+          description: Null when no further pages
+
+    PushTokenRegisterRequest:
+      type: object
+      required: [expo_push_token, platform]
+      properties:
+        expo_push_token:
+          type: string
+        platform:
+          type: string
+          enum: [android, ios]
+        device_id:
+          type: string
+          maxLength: 128
+          description: Optional stable device identifier from app install
+
+security:
+  - bearerAuth: []

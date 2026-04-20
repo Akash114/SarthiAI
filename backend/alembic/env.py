@@ -1,38 +1,41 @@
-"""Alembic environment configuration."""
-from __future__ import annotations
-
-import sys
-from pathlib import Path
+import os
+from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-from logging.config import fileConfig
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
-
-from app.core.config import settings  # noqa: E402
-from app.db.base import Base  # noqa: E402
-from app.db import models  # noqa: F401,E402  ensure models are imported
+from app.config import get_settings
+from app.db import Base
+from app.models import (  # noqa: F401
+    DevicePushToken,
+    IdempotencyRecord,
+    Intervention,
+    RefreshToken,
+    Resolution,
+    Task,
+    TransparencyEntry,
+    User,
+    UserOnboarding,
+)
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-config.set_main_option("sqlalchemy.url", settings.database_url)
 
 target_metadata = Base.metadata
 
 
+def get_url() -> str:
+    return os.environ.get("DATABASE_URL", get_settings().database_url)
+
+
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode."""
+    url = get_url()
     context.configure(
-        url=settings.database_url,
+        url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        compare_type=True,
-        compare_server_default=True,
     )
 
     with context.begin_transaction():
@@ -40,10 +43,8 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
-    configuration = config.get_section(config.config_ini_section, {}).copy()
-    configuration["sqlalchemy.url"] = settings.database_url
-
+    configuration = config.get_section(config.config_ini_section) or {}
+    configuration["sqlalchemy.url"] = get_url()
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",
@@ -51,12 +52,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-            compare_server_default=True,
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

@@ -1,0 +1,26 @@
+# Vertical slice smoke (ADR 0003): Expo Go app id. Flow: register → API-backed steps
+# onboarding → resolution → week-1 plan → task complete → intervention → transparency → done.
+# After "Done", use testID slice-logout-btn to return to auth and re-run with a new registration.
+appId: host.exp.exponent
+---
+- launchApp
+- assertVisible:
+    id: "auth-root"
+- tapOn:
+    id: "auth-register-btn"
+- assertVisible:
+    id: "slice-root"
+- tapOn:
+    id: "slice-next-btn"
+- tapOn:
+    id: "slice-next-btn"
+- tapOn:
+    id: "slice-next-btn"
+- tapOn:
+    id: "slice-next-btn"
+- tapOn:
+    id: "slice-next-btn"
+- tapOn:
+    id: "slice-next-btn"
+- assertVisible:
+    id: "slice-done-label"

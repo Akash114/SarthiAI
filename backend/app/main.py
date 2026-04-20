@@ -1,54 +1,107 @@
-"""Main FastAPI application for Sarthi AI backend."""
-from fastapi import FastAPI, Request
+from __future__ import annotations
 
-from app.api.routes.brain_dump import router as brain_dump_router
-from app.api.routes.resolution import router as resolution_router
-from app.api.routes.resolutions_approve import router as resolutions_approve_router
-from app.api.routes.resolutions_decompose import router as resolutions_decompose_router
-from app.api.routes.resolutions_intake import router as resolutions_intake_router
-from app.api.routes.task import router as task_router
-from app.api.routes.dashboard import router as dashboard_router
-from app.api.routes.weekly_plan import router as weekly_plan_router
-from app.api.routes.interventions import router as interventions_router
-from app.api.routes.journey import router as journey_router
-from app.api.routes.preferences import router as preferences_router
-from app.api.routes.jobs import router as jobs_router
-from app.api.routes.notifications import router as notifications_router
-from app.api.routes.agent_log import router as agent_log_router
-from app.core.config import settings
-from app.core.logging import configure_logging
-from app.core.middleware import RequestIDMiddleware
-from app.observability.client import init_opik
-from app.observability.tracing import trace
+import atexit
+import logging
+import uuid
+from contextlib import asynccontextmanager
 
-configure_logging(log_level=settings.log_level)
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from posthog import Posthog
+from sqlalchemy import text
 
-app = FastAPI(title=settings.app_name, version="0.1.0")
-app.add_middleware(RequestIDMiddleware)
-app.include_router(brain_dump_router)
-app.include_router(resolution_router)
-app.include_router(resolutions_intake_router)
-app.include_router(resolutions_decompose_router)
-app.include_router(resolutions_approve_router)
-app.include_router(task_router)
-app.include_router(dashboard_router)
-app.include_router(weekly_plan_router)
-app.include_router(interventions_router)
-app.include_router(journey_router)
-app.include_router(jobs_router)
-app.include_router(preferences_router)
-app.include_router(notifications_router)
-app.include_router(agent_log_router)
+from app.api.exceptions import ApiError, api_error_handler
+from app.api.v1.router import v1_router
+from app.config import get_settings
+from app.db import get_engine
+from app.observability.context import request_id_ctx
+from app.observability.logging_json import configure_logging
+from app.observability.otel_setup import instrument_fastapi, setup_tracing
+from app.observability.sentry_setup import init_sentry_api
+from app.queue import redis_connection
+
+logger = logging.getLogger(__name__)
 
 
-@app.on_event("startup")
-async def startup_observability() -> None:
-    """Initialize observability backends after the event loop starts."""
-    init_opik()
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    settings = get_settings()
+    if settings.posthog_api_key:
+        posthog_client = Posthog(
+            settings.posthog_api_key,
+            host=settings.posthog_host,
+            enable_exception_autocapture=True,
+        )
+        _app.state.posthog = posthog_client
+        atexit.register(posthog_client.shutdown)
+    else:
+        _app.state.posthog = None
+    yield
+    if _app.state.posthog is not None:
+        _app.state.posthog.flush()
 
 
-@app.get("/health", tags=["health"], summary="Readiness probe")
-async def health_check(request: Request) -> dict[str, str]:
-    """Return a simple status payload so automation can probe the API."""
-    with trace("http.health_check", metadata={"route": "/health"}, request_id=request.state.request_id):
+def create_app() -> FastAPI:
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    setup_tracing(
+        service_name=settings.otel_service_name,
+        otlp_endpoint=settings.otel_exporter_otlp_traces_endpoint,
+        sample_ratio=settings.otel_traces_sample_ratio,
+        instrument_without_export=settings.otel_instrument_without_export,
+    )
+
+    app = FastAPI(title="Sarthi API", lifespan=lifespan)
+
+    if settings.sentry_dsn:
+        init_sentry_api(
+            dsn=settings.sentry_dsn,
+            environment=settings.environment,
+            traces_sample_rate=settings.sentry_traces_sample_rate,
+        )
+
+    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.middleware("http")
+    async def add_request_id(request: Request, call_next):
+        rid = str(uuid.uuid4())
+        request.state.request_id = rid
+        token = request_id_ctx.set(rid)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-Id"] = rid
+            return response
+        finally:
+            request_id_ctx.reset(token)
+
+    @app.get("/health", tags=["health"])
+    def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/ready", tags=["health"])
+    def ready() -> dict[str, str]:
+        try:
+            with get_engine().connect() as conn:
+                conn.execute(text("SELECT 1"))
+            redis_connection().ping()
+        except Exception:
+            logger.exception("readiness_failed")
+            raise HTTPException(status_code=503, detail={"status": "not_ready"})
+        return {"status": "ready"}
+
+    app.add_exception_handler(ApiError, api_error_handler)
+
+    app.include_router(v1_router, prefix="/v1")
+
+    instrument_fastapi(app)
+    return app
+
+
+app = create_app()

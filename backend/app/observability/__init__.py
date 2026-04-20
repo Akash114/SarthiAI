@@ -1,1 +1,1 @@
-"""Observability utilities placeholder."""
+"""Structured logging, OpenTelemetry, Sentry helpers."""
