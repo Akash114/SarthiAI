@@ -1,0 +1,12 @@
+{
+  "name": "@sarthiai/openapi-tooling",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pinned Redocly CLI for OpenAPI lint (avoids npx download on every run)",
+  "scripts": {
+    "lint": "cd ../.. && redocly lint docs/contracts/openapi.yaml"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^2.29.0"
+  }
+}
