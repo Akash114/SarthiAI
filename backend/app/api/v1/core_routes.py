@@ -20,6 +20,7 @@ from app.models.task import Task as TaskORM
 from app.models.transparency import TransparencyEntry as TransparencyORM
 from app.models.user import User
 from app.models.device_push import DevicePushToken
+from app.observability.trace_http import traceparent_from_context
 from app.queue import task_queue
 from app.schemas.api import (
     GenerateWeek1Response,
@@ -216,7 +217,16 @@ def resolutions_generate_week_1(
         return out
     r.week_1_plan_status = "pending"
     db.commit()
-    job = task_queue().enqueue(run_generate_week1, str(resolution_id))
+    tp = traceparent_from_context()
+    meta: dict[str, str] = {"request_id": rid}
+    if tp:
+        meta["traceparent"] = tp
+    job = task_queue().enqueue(
+        run_generate_week1,
+        str(resolution_id),
+        job_timeout=120,
+        meta=meta,
+    )
     db.refresh(r)
     out = GenerateWeek1Response(week_1_plan_status=r.week_1_plan_status, job_id=job.id)
     if idempotency_key and len(idempotency_key) >= 8:

@@ -122,3 +122,56 @@ def test_invalid_login(client: TestClient) -> None:
         json={"email": "nope@test.dev", "password": "wrong"},
     )
     assert r.status_code == 401
+
+
+def _setup_user_with_pending_intervention(client: TestClient, auth_headers: dict[str, str]) -> tuple[str, str]:
+    """Onboarding, resolution, week-1 gen, complete one task → pending intervention."""
+    client.patch(
+        "/v1/onboarding",
+        headers={**auth_headers, "Idempotency-Key": "ob-" + "d" * 8},
+        json={"step": "prefs", "mark_completed": True},
+    )
+    r = client.post(
+        "/v1/resolutions",
+        headers={**auth_headers, "Idempotency-Key": "res-" + "d" * 8},
+        json={"title": "Dismiss path", "detail": "Contract test"},
+    )
+    assert r.status_code == 201
+    rid = r.json()["id"]
+    g = client.post(
+        f"/v1/resolutions/{rid}/generate-week-1",
+        headers={**auth_headers, "Idempotency-Key": "gen-" + "d" * 8},
+    )
+    assert g.status_code == 202
+    tl = client.get(f"/v1/resolutions/{rid}/tasks", headers=auth_headers)
+    tid = tl.json()["tasks"][0]["id"]
+    client.post(
+        f"/v1/tasks/{tid}/complete",
+        headers={**auth_headers, "Idempotency-Key": "tc-" + "d" * 8},
+    )
+    iv = client.get("/v1/interventions/current", headers=auth_headers)
+    assert iv.json()["intervention"] is not None
+    iid = iv.json()["intervention"]["id"]
+    return rid, iid
+
+
+def test_intervention_dismiss_idempotent(client: TestClient, auth_headers: dict[str, str]) -> None:
+    _, iid = _setup_user_with_pending_intervention(client, auth_headers)
+    ds = client.post(
+        f"/v1/interventions/{iid}/dismiss",
+        headers={**auth_headers, "Idempotency-Key": "ds-" + "x" * 8},
+    )
+    assert ds.status_code == 200
+    assert ds.json()["status"] == "dismissed"
+
+    ds2 = client.post(
+        f"/v1/interventions/{iid}/dismiss",
+        headers={**auth_headers, "Idempotency-Key": "ds-" + "x" * 8},
+    )
+    assert ds2.status_code == 200
+    assert ds2.json() == ds.json()
+
+    log = client.get("/v1/transparency-log", headers=auth_headers)
+    assert log.status_code == 200
+    headlines = {item["headline"] for item in log.json()["items"]}
+    assert "Intervention dismissed" in headlines

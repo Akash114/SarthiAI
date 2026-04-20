@@ -8,7 +8,8 @@ from app.config import get_settings
 
 @lru_cache
 def redis_connection() -> redis.Redis:
-    return redis.from_url(get_settings().redis_url)
+    s = get_settings()
+    return redis.from_url(s.redis_url, socket_timeout=s.redis_socket_timeout_seconds)
 
 
 def task_queue() -> Queue:

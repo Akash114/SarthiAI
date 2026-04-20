@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from opentelemetry.propagate import extract
+from opentelemetry.trace import get_tracer
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -14,18 +17,40 @@ from app.models.resolution import Resolution
 from app.models.task import Task
 from app.models.transparency import TransparencyEntry
 
+logger = logging.getLogger(__name__)
+_tracer = get_tracer(__name__)
+
 
 def run_generate_week1(resolution_id: str) -> None:
-    rid = UUID(resolution_id)
-    db = get_session_factory()()
-    try:
-        _run(db, rid)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    from rq.job import get_current_job
+
+    job = get_current_job()
+    meta = (job.meta if job else {}) or {}
+    rid_log = meta.get("request_id")
+    tp = meta.get("traceparent")
+
+    carrier: dict[str, str] = {}
+    if tp:
+        carrier["traceparent"] = tp
+    ctx = extract(carrier)
+
+    with _tracer.start_as_current_span("run_generate_week1", context=ctx):
+        if rid_log:
+            logger.info("week1_job_start", extra={"request_id": rid_log})
+        rid = UUID(resolution_id)
+        db = get_session_factory()()
+        try:
+            _run(db, rid)
+            db.commit()
+        except Exception:
+            db.rollback()
+            extra: dict[str, str] = {"resolution_id": resolution_id}
+            if rid_log:
+                extra["request_id"] = rid_log
+            logger.exception("week1_job_failed", extra=extra)
+            raise
+        finally:
+            db.close()
 
 
 def _run(db: Session, resolution_id: UUID) -> None:

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 import pytest
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -19,6 +22,7 @@ def _settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-at-least-32-characters-long")
     monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:6379/15")
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
     get_settings.cache_clear()
 
 
@@ -43,13 +47,20 @@ def client(engine, monkeypatch: pytest.MonkeyPatch):
     db_mod.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
     class _InlineQueue:
-        def enqueue(self, fn, arg):
-            fn(arg)
+        def enqueue(self, fn, *args, **kwargs):
+            job_meta = kwargs.pop("meta", None) or {}
+            job_timeout = kwargs.pop("job_timeout", None)
+            _ = job_timeout
+            assert not kwargs, kwargs
+            # Simulate RQ passing only positional args to the job function
+            fn(*args)
 
             class _J:
                 id = "inline-job"
 
-            return _J()
+            j = _J()
+            j.meta = job_meta
+            return j
 
     monkeypatch.setattr("app.api.v1.core_routes.task_queue", lambda: _InlineQueue())
 

@@ -18,8 +18,15 @@ SessionLocal: sessionmaker[Session] | None = None
 def configure_engine(url: str | None = None) -> None:
     """(Re)bind engine and SessionLocal — used by tests and app startup."""
     global engine, SessionLocal
-    url = url or get_settings().database_url
-    engine = create_engine(url, pool_pre_ping=True, echo=False)
+    settings = get_settings()
+    url = url or settings.database_url
+    engine = create_engine(
+        url,
+        pool_pre_ping=True,
+        echo=False,
+        pool_size=settings.database_pool_size,
+        pool_timeout=settings.database_pool_timeout_seconds,
+    )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

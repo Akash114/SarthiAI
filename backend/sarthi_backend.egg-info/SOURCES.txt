@@ -25,6 +25,12 @@ app/models/resolution.py
 app/models/task.py
 app/models/transparency.py
 app/models/user.py
+app/observability/__init__.py
+app/observability/context.py
+app/observability/logging_json.py
+app/observability/otel_setup.py
+app/observability/sentry_setup.py
+app/observability/trace_http.py
 app/schemas/__init__.py
 app/schemas/api.py
 app/security/jwt_tokens.py

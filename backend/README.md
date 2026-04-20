@@ -4,7 +4,13 @@ FastAPI service implementing the frozen `/v1` contract ([docs/contracts/openapi.
 
 ## Local development
 
-1. Start Postgres and Redis:
+1. Start Postgres and Redis (optional: API + RQ worker in containers):
+
+   ```bash
+   docker compose -f docker-compose.yaml up -d postgres redis
+   ```
+
+   To run the API and worker in Docker as well (after `alembic upgrade head` against the DB), copy `.env.example` to `.env`, set `JWT_SECRET`, then:
 
    ```bash
    docker compose -f docker-compose.yaml up -d
