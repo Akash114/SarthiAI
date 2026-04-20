@@ -41,7 +41,7 @@
     ],
     "extra": {
       "posthogKey": "",
-      "posthogHost": "https://us.i.posthog.com",
+      "posthogHost": "https://eu.i.posthog.com",
       "sentryDsn": "",
       "sentryEnvironment": "development"
     }

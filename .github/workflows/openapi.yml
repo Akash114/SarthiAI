@@ -1,0 +1,35 @@
+name: OpenAPI
+
+on:
+  push:
+    paths:
+      - "docs/contracts/openapi.yaml"
+      - "redocly.yaml"
+      - "tooling/openapi/package.json"
+      - "tooling/openapi/package-lock.json"
+      - ".github/workflows/openapi.yml"
+  pull_request:
+    paths:
+      - "docs/contracts/openapi.yaml"
+      - "redocly.yaml"
+      - "tooling/openapi/package.json"
+      - "tooling/openapi/package-lock.json"
+      - ".github/workflows/openapi.yml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tooling/openapi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tooling/openapi/package-lock.json
+      - name: Install CLI (pinned)
+        run: npm ci
+      - name: Lint OpenAPI
+        run: npm run lint

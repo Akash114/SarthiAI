@@ -1,0 +1,17 @@
+# Maestro E2E — run manually until an Android emulator job is stable on CI.
+# Prereq: backend reachable from the device/emulator, Maestro CLI installed, app built per ADR 0003.
+
+name: Maestro (manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  note:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instructions
+        run: |
+          echo "Run locally: cd mobile && maestro test maestro/slice.yaml"
+          echo "See mobile/maestro/slice.yaml — full vertical slice (onboarding → week-1 → intervention) against the API."

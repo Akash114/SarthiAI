@@ -7,7 +7,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import current_user, current_user_id
+from posthog import identify_context, new_context
+
+from app.api.v1.deps import current_user, current_user_id, get_posthog
 from app.db import get_db
 from app.models.onboarding import UserOnboarding
 from app.models.user import User
@@ -48,6 +50,7 @@ def patch_onboarding(
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
     user: Annotated[User, Depends(current_user)],
+    posthog=Depends(get_posthog),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> OnboardingState | Response:
     replay = replay_if_exists(
@@ -89,4 +92,11 @@ def patch_onboarding(
             body=out.model_dump(mode="json"),
         )
         db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user_id))
+            if body.mark_completed:
+                posthog.capture("onboarding completed")
+            elif body.step is not None:
+                posthog.capture("onboarding step advanced", properties={"step": body.step})
     return out

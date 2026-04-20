@@ -10,8 +10,10 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from posthog import identify_context, new_context
+
 from app.api.exceptions import ApiError
-from app.api.v1.deps import _rid, current_user, current_user_id
+from app.api.v1.deps import _rid, current_user, current_user_id, get_posthog
 from app.db import get_db
 from app.jobs.week1 import run_generate_week1
 from app.models.intervention import Intervention as InterventionORM
@@ -72,6 +74,7 @@ def resolutions_create(
     body: ResolutionCreateRequest,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> Resolution | Response:
     rid = _rid(request)
@@ -120,6 +123,10 @@ def resolutions_create(
             body=out.model_dump(mode="json"),
         )
         db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("resolution created", properties={"has_detail": bool(body.detail)})
     return out
 
 
@@ -144,6 +151,7 @@ def resolutions_patch(
     body: ResolutionPatchRequest,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> Resolution | Response:
     rid = _rid(request)
@@ -178,6 +186,10 @@ def resolutions_patch(
             body=out.model_dump(mode="json"),
         )
         db.commit()
+    if posthog is not None and body.status is not None:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("resolution status updated", properties={"status": body.status})
     return out
 
 
@@ -191,6 +203,7 @@ def resolutions_generate_week_1(
     resolution_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> GenerateWeek1Response | Response:
     rid = _rid(request)
@@ -239,6 +252,10 @@ def resolutions_generate_week_1(
             body=out.model_dump(mode="json"),
         )
         db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("week 1 plan requested", properties={"resolution_id": str(resolution_id)})
     return out
 
 
@@ -265,6 +282,7 @@ def tasks_complete(
     task_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> Task | Response:
     rid = _rid(request)
@@ -296,6 +314,10 @@ def tasks_complete(
             body=out.model_dump(mode="json"),
         )
         db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("task completed", properties={"resolution_id": str(t.resolution_id)})
     return out
 
 
@@ -323,6 +345,7 @@ def interventions_approve(
     intervention_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> Intervention | Response:
     rid = _rid(request)
@@ -367,6 +390,10 @@ def interventions_approve(
             body=out.model_dump(mode="json"),
         )
         db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("intervention approved")
     return out
 
 
@@ -376,6 +403,7 @@ def interventions_dismiss(
     intervention_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> Intervention | Response:
     rid = _rid(request)
@@ -420,6 +448,10 @@ def interventions_dismiss(
             body=out.model_dump(mode="json"),
         )
         db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("intervention dismissed")
     return out
 
 

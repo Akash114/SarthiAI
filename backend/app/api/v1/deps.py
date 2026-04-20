@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from posthog import Posthog
 from sqlalchemy.orm import Session
 
 from app.api.exceptions import ApiError
@@ -13,6 +14,10 @@ from app.observability.context import user_id_ctx
 from app.security.jwt_tokens import parse_user_id_from_access
 
 security = HTTPBearer(auto_error=False)
+
+
+def get_posthog(request: Request) -> Posthog | None:
+    return getattr(request.app.state, "posthog", None)
 
 
 def _rid(request: Request) -> str:

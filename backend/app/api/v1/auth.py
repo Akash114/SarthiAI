@@ -5,11 +5,12 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
+from posthog import identify_context, new_context
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.exceptions import ApiError
-from app.api.v1.deps import _rid, current_user_id
+from app.api.v1.deps import _rid, current_user_id, get_posthog
 from app.db import get_db
 from app.models.onboarding import UserOnboarding
 from app.models.refresh_token import RefreshToken
@@ -59,9 +60,8 @@ def register(
     request: Request,
     body: AuthRegisterRequest,
     db: Annotated[Session, Depends(get_db)],
+    posthog=Depends(get_posthog),
 ) -> AuthTokenResponse:
-    from uuid import UUID
-
     rid = _rid(request)
     email = str(body.email).lower()
     if db.scalar(select(User).where(User.email == email)):
@@ -84,6 +84,10 @@ def register(
     )
     tokens = _issue_tokens(db, user.id)
     db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user.id))
+            posthog.capture("user signed up", properties={"signup_method": "email"})
     return tokens
 
 
@@ -92,6 +96,7 @@ def login(
     request: Request,
     body: AuthLoginRequest,
     db: Annotated[Session, Depends(get_db)],
+    posthog=Depends(get_posthog),
 ) -> AuthTokenResponse:
     rid = _rid(request)
     email = str(body.email).lower()
@@ -105,6 +110,10 @@ def login(
         )
     tokens = _issue_tokens(db, user.id)
     db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user.id))
+            posthog.capture("user logged in", properties={"login_method": "email"})
     return tokens
 
 
@@ -160,6 +169,7 @@ def logout(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
     _body: AuthLogoutRequest | None = None,
 ) -> Response:
     """Invalidate all active refresh tokens for this user."""
@@ -171,4 +181,8 @@ def logout(
     ):
         rt.revoked_at = datetime.now(UTC)
     db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("user logged out")
     return Response(status_code=204)

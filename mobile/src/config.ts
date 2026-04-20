@@ -27,7 +27,7 @@ const extraUrl =
 export const API_BASE_URL = String(envUrl ?? extraUrl ?? defaultApiUrl()).replace(/\/$/, '');
 
 export const POSTHOG_KEY = String(extra.posthogKey ?? '');
-export const POSTHOG_HOST = String(extra.posthogHost ?? 'https://us.i.posthog.com');
+export const POSTHOG_HOST = String(extra.posthogHost ?? 'https://eu.i.posthog.com');
 export const SENTRY_DSN = String(extra.sentryDsn ?? '');
 /** EAS / app.json `extra.sentryEnvironment`; defaults by __DEV__. */
 export const SENTRY_ENVIRONMENT = String(

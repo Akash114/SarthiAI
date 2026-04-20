@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     access_token_minutes: int = 30
     refresh_token_days: int = 30
     sentry_dsn: str | None = None
+    sentry_worker_dsn: str | None = None
     sentry_traces_sample_rate: float = 0.1
     cors_origins: str = "http://localhost:8081,http://127.0.0.1:8081"
     environment: str | None = None
@@ -23,6 +24,9 @@ class Settings(BaseSettings):
     otel_instrument_without_export: bool = False
     otel_service_name: str = "sarthi-api"
     otel_worker_service_name: str = "sarthi-worker"
+    # PostHog
+    posthog_api_key: str | None = None
+    posthog_host: str = "https://eu.i.posthog.com"
     # Connection tuning (production)
     database_pool_size: int = 5
     database_pool_timeout_seconds: int = 30

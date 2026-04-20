@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import atexit
 import logging
 import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from posthog import Posthog
 from sqlalchemy import text
 
 from app.api.exceptions import ApiError, api_error_handler
@@ -23,7 +25,20 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    settings = get_settings()
+    if settings.posthog_api_key:
+        posthog_client = Posthog(
+            settings.posthog_api_key,
+            host=settings.posthog_host,
+            enable_exception_autocapture=True,
+        )
+        _app.state.posthog = posthog_client
+        atexit.register(posthog_client.shutdown)
+    else:
+        _app.state.posthog = None
     yield
+    if _app.state.posthog is not None:
+        _app.state.posthog.flush()
 
 
 def create_app() -> FastAPI:

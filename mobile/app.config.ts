@@ -19,7 +19,7 @@ export default ({ config }: { config: Record<string, unknown> }) => {
       apiUrl: process.env.EXPO_PUBLIC_API_URL ?? base.apiUrl ?? '',
       sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? base.sentryDsn ?? '',
       posthogKey: process.env.EXPO_PUBLIC_POSTHOG_KEY ?? base.posthogKey ?? '',
-      posthogHost: process.env.EXPO_PUBLIC_POSTHOG_HOST ?? base.posthogHost ?? 'https://us.i.posthog.com',
+      posthogHost: process.env.EXPO_PUBLIC_POSTHOG_HOST ?? base.posthogHost ?? 'https://eu.i.posthog.com',
       sentryEnvironment:
         process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ?? base.sentryEnvironment ?? 'development',
     },

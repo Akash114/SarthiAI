@@ -18,9 +18,10 @@ def main() -> None:
         sample_ratio=s.otel_traces_sample_ratio,
         instrument_without_export=s.otel_instrument_without_export,
     )
-    if s.sentry_dsn:
+    worker_dsn = s.sentry_worker_dsn or s.sentry_dsn
+    if worker_dsn:
         init_sentry_worker(
-            dsn=s.sentry_dsn,
+            dsn=worker_dsn,
             environment=s.environment,
             traces_sample_rate=s.sentry_traces_sample_rate,
         )
