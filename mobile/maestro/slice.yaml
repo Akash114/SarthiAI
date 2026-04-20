@@ -1,3 +1,6 @@
+# Vertical slice smoke (ADR 0003): Expo Go app id. Flow: register → API-backed steps
+# onboarding → resolution → week-1 plan → task complete → intervention → transparency → done.
+# After "Done", use testID slice-logout-btn to return to auth and re-run with a new registration.
 appId: host.exp.exponent
 ---
 - launchApp

@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 
 import { API_BASE_URL } from '../config';
+import { capturePushTokenRegistered } from './analytics';
 import { useSessionStore } from '../state/sessionStore';
 
 Notifications.setNotificationHandler({
@@ -36,7 +37,7 @@ export async function notifyInterventionPending(): Promise<void> {
 export async function registerPushTokenWithBackend(expoToken: string): Promise<void> {
   const token = useSessionStore.getState().accessToken;
   if (!token) return;
-  await fetch(`${API_BASE_URL}/v1/devices/push-token`, {
+  const res = await fetch(`${API_BASE_URL}/v1/devices/push-token`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -45,4 +46,7 @@ export async function registerPushTokenWithBackend(expoToken: string): Promise<v
     },
     body: JSON.stringify({ expo_push_token: expoToken, platform: 'android' }),
   });
+  if (res.ok) {
+    capturePushTokenRegistered('android');
+  }
 }

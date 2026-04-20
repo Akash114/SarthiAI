@@ -50,3 +50,15 @@ export function captureTaskCompleted(resolutionId: string, taskId: string): void
 export function captureInterventionPromptShown(interventionId: string): void {
   client?.capture('intervention_prompt_shown', { intervention_id: interventionId, platform: 'android' });
 }
+
+export function captureInterventionApproved(interventionId: string): void {
+  client?.capture('intervention_approved', { intervention_id: interventionId, platform: 'android' });
+}
+
+export function captureWeek1PlanRequested(resolutionId: string): void {
+  client?.capture('week_1_plan_requested', { resolution_id: resolutionId, platform: 'android' });
+}
+
+export function capturePushTokenRegistered(platform: 'android'): void {
+  client?.capture('push_token_registered', { platform });
+}
