@@ -1,20 +1,21 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.env
-.*venv/
-venv/
-.python-version
-
-# Node/Expo
-mobile/node_modules/
-.expo/
-.expo-shared/
-.DS_Store
-package-lock.json
-
-# Misc
+# IDE
 .idea/
 .vscode/
 .cursor/
+
+# Legacy
+old/
+
+# Node/Expo
+mobile/node_modules/
+tooling/openapi/node_modules/
+.expo/
+
+# Python
+__pycache__/
+.*venv/
+.python-version
+
+# Env
+.env
+ 

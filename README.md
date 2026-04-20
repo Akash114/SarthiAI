@@ -1,217 +1,93 @@
 # Sarthi AI
 
-Sarthi AI is an agentic resolution coach that helps people keep their commitments with supportive autonomy. The project couples a FastAPI backend (LLM-enabled planning, scheduler jobs, observability hooks) with an Expo/React Native client that mirrors the coaching experience end to end.
+Sarthi is an AI coaching companion that helps people follow through on commitments with **supportive autonomy**: plans and nudges stay explainable, controllable, and aligned with what the user actually wants to do.
 
 ---
 
-## Why It Exists
+## Vision and principles
 
-- **Dual intake** keeps the agent grounded: structured resolution setup plus free-form brain dumps feed a shared context.
-- **Rolling Wave planning** decomposes resolutions into 4–12 week arcs, activates Week 1 tasks, and iterates each Sunday from observed performance.
-- **Thursday interventions** detect slippage early and offer choices (reduce scope, reschedule, reflect) so users stay in control.
-- **Transparency + guardrails** (`AgentActionLog`, preferences, pause controls, optional Opik traces) reinforce psychological safety.
+- **Agency first**: autonomous actions are explainable, reviewable, and user-controllable.
+- **Calm reliability**: reminders, plans, and interventions behave predictably (Android-first release, then iOS).
+- **Contract-first**: backend APIs and event schemas are defined before UI work expands.
+- **Evidence-driven**: product changes lean on telemetry and user outcomes, not feature count alone.
 
 ---
 
-## Architecture at a Glance
+## Target architecture
 
-```bash
-┌──────────────────────────────┐      ┌──────────────────────────────┐
-│ Expo / React Native Client   │◀────▶│ FastAPI Backend (Python 3.11)│
-│ • Brain dumps + resolutions  │      │ • REST / JSON APIs           │
-│ • Plan review & approvals    │      │ • SQLAlchemy + Postgres      │
-│ • Weekly plan & My Week      │      │ • OpenAI-powered agents      │
-│ • Interventions & settings   │      │ • APScheduler worker         │
-└──────────────────────────────┘      └──────────┬───────────────────┘
-                                                 │
-                              ┌──────────────────┴─────────────┐
-                              │ Persistence & Telemetry        │
-                              │ • Postgres via SQLAlchemy ORM  │
-                              │ • AgentActionLog transparency  │
-                              │ • Optional Opik metrics/traces │
-                              └────────────────────────────────┘
+```text
+┌─────────────────────────────┐       ┌─────────────────────────────┐
+│  Mobile (Expo / RN + TS)    │◀─────▶│  Backend (FastAPI + Python) │
+│  Android first, then iOS    │       │  REST / JSON, Postgres      │
+└─────────────────────────────┘       └──────────────┬──────────────┘
+                                                   │
+                                    ┌──────────────┴──────────────┐
+                                    │  Jobs, LLM services, etc.   │
+                                    └─────────────────────────────┘
 ```
 
-Key backend components live under `backend/app/`:
-
-- `api/routes`: FastAPI routers (brain dumps, resolutions, tasks, weekly plan, interventions, jobs, preferences, notifications, agent log, dashboard).
-- `services`: domain logic (LLM planners, decomposer, intervention handler, scheduler runners, notification hooks, task reminders, preference helpers).
-- `worker/scheduler_main.py`: APScheduler worker that runs weekly-plan, intervention, and reminder jobs respecting preference flags.
-
-The mobile client (React Native + TypeScript) lives under `mobile/` with screens that map directly to API workflows.
-
 ---
 
-## Capabilities Checklist
+## Repository layout (broad)
 
-- ✅ Brain dump ingestion with signal extraction + acknowledgement
-- ✅ Resolution intake, LLM decomposition, plan approval flow
-- ✅ Weekly plan preview/run/history endpoints + Rolling Wave task materialization
-- ✅ Thursday slippage detection with actionable intervention options
-- ✅ Intervention follow-up actions (reduce scope, reschedule, reflect) stored as agent logs
-- ✅ AgentActionLog APIs + mobile transparency screens
-- ✅ User preferences (pause coaching, weekly plans, interventions) enforced in schedulers & notifications
-- ✅ Notifications plumbing with stub provider + Expo push token registry
-
----
-
-## Backend Quickstart
-
-```bash
-# Prereqs: Python 3.11.7, Postgres running locally or in Docker
-docker compose up -d postgres
-
-cd backend
-python3.11 -m venv .venv && source .venv/bin/activate
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -e .[dev]
-cp .env.example .env  # configure DATABASE_URL, OpenAI keys, scheduler flags, etc.
-
-# Apply migrations & run API
-python -m alembic upgrade head
-python -m uvicorn app.main:app --reload
-
-# (Optional) start scheduler worker for cron jobs
-python -m app.worker.scheduler_main
-
-# Run tests
-python -m pytest
-
-# Lint
-python -m ruff check .
+```text
+SarthiAI/
+├── backend/                    # FastAPI service (scaffold when you start the API)
+├── mobile/                     # Expo + React Native app
+├── docs/                       # Product scope, ADRs, analytics taxonomy, API contracts
+├── README.md
+└── .gitignore
 ```
 
-Stop the database when done:
+---
 
-```bash
-docker compose stop postgres
-```
+## Phase 1 artifacts (contracts and decisions)
 
-Key env toggles (see `app/core/config.py`): `SCHEDULER_ENABLED`, `WEEKLY_JOB_*`, `INTERVENTION_JOB_*`, `JOBS_RUN_ON_STARTUP`, `OPIK_ENABLED`, `NOTIFICATIONS_ENABLED`, `TASK_REMINDER_*`.
+| Artifact | Path |
+| --- | --- |
+| Android v1 scope (FROZEN) | [docs/product/v1-scope.md](docs/product/v1-scope.md) |
+| Phase 2 readiness review | [docs/product/phase2-readiness-review.md](docs/product/phase2-readiness-review.md) |
+| Quality gates (Phase 2 evidence) | [docs/engineering/quality-gates-v1.md](docs/engineering/quality-gates-v1.md) |
+| Decision record policy (in-repo) | [docs/governance/decision-record-policy.md](docs/governance/decision-record-policy.md) |
+| Architecture Decision Records | [docs/adr/README.md](docs/adr/README.md) |
+| Public HTTP API (OpenAPI 3.1) | [docs/contracts/openapi.yaml](docs/contracts/openapi.yaml) |
+| Analytics taxonomy (FROZEN) | [docs/analytics/taxonomy-v1.md](docs/analytics/taxonomy-v1.md) |
+
+**Lint OpenAPI (fast, pinned CLI):** from repo root, `cd tooling/openapi && npm ci && npm run lint` (see [docs/contracts/README.md](docs/contracts/README.md)). Prefer this over repeated `npx @redocly/cli`, which downloads on each invocation and is easy to mistake for a hung terminal.
 
 ---
 
-## Mobile Quickstart
+## Tech stack (locked for rebuild v1)
 
-```bash
-cd mobile
-npm install
-cp .env.example .env  # optionally override EXPO_PUBLIC_API_BASE_URL
-npm run start          # Expo dev server
-# or npm run ios / npm run android
+Decisions and rationale live in [docs/adr/](docs/adr/README.md). Summary:
 
-# Lint/typecheck
-npm run lint
-```
+| Layer | Choice |
+| --- | --- |
+| Mobile | React Native, Expo (EAS), TypeScript ([ADR 0009](docs/adr/0009-mobile-expo-eas.md)) |
+| Navigation / state (target) | React Navigation; TanStack Query; Zustand; React Hook Form + Zod (per program spec; wire in Phase 2) |
+| API | FastAPI, Pydantic; public contract in [docs/contracts/openapi.yaml](docs/contracts/openapi.yaml) (`/v1`) |
+| Auth | JWT access + refresh ([ADR 0006](docs/adr/0006-auth-jwt-bearer.md)) |
+| Data | PostgreSQL, SQLAlchemy, Alembic ([ADR 0010](docs/adr/0010-database-migrations-alembic.md)) |
+| Jobs | Redis + **RQ** ([ADR 0001](docs/adr/0001-background-jobs-rq.md)); idempotency at HTTP boundary |
+| Product analytics | **PostHog** ([ADR 0002](docs/adr/0002-product-analytics-posthog.md)); [taxonomy](docs/analytics/taxonomy-v1.md) |
+| Error monitoring | **Sentry** ([ADR 0007](docs/adr/0007-observability-sentry.md)) |
+| Tracing / logs | OpenTelemetry + structured JSON logs, minimal bootstrap ([ADR 0008](docs/adr/0008-opentelemetry-structured-logs.md)) |
+| CI/CD | **GitHub Actions** ([ADR 0004](docs/adr/0004-ci-github-actions.md)) |
+| Mobile E2E smoke | **Maestro** ([ADR 0003](docs/adr/0003-mobile-e2e-maestro.md)) |
+| Pinning | **uv** + `uv.lock` (Python), **npm** + `package-lock.json` ([ADR 0005](docs/adr/0005-dependency-pinning.md)) |
 
-The app reads the backend base URL from `EXPO_PUBLIC_API_BASE_URL`. If unset, it defaults to:
-
-- Android emulator: `http://10.0.2.2:8000`
-- iOS simulator + web: `http://localhost:8000`
-
-Key screens:
-
-- **Home**: snapshot of today + quick links to Brain Dump, Draft Plans, My Week, Dashboard.
-- **Resolution Create / Plan Review**: mirrors backend intake/decompose/approve flow.
-- **My Week**: active task list with complete/note toggles.
-- **Interventions**: latest snapshot, option buttons wired to `/interventions/respond`, history detail screens.
-- **Settings**: autonomy toggles, push registration, Agent Action Log.
+Python **3.11+** and Node **Active LTS** are required; pin CI images when workflows land.
 
 ---
 
-## Product Walkthrough (Screenshots)
+## Prerequisites
 
-### Home + Daily Flow
-
-<img src="mobile/assets/images/Home%20Screen.png" alt="Home screen showing daily flow, quick actions, and context toggles" width="360">
-
-Here’s the landing screen of **Sarthi**, your supportive productivity coach. Because Sarthi understands your preferred contexts, it automatically highlights the current focus (Work or Personal) and lines up the most relevant hero task, quick actions, and praise nudges pulled from `/dashboard`, `/tasks`, and `/journey`. You can immediately jump into a Brain Dump, draft plans, interventions, or personalization without hunting for menus.
-
-### Personalizing Your Flow
-
-<img src="mobile/assets/images/Personalize.png" alt="Personalize flow screen showing work blocks and preferred time slots" width="360">
-
-This screen is basically a coffee chat with Sarthi about your ideal day. I tell it when I’m “on the clock,” which days feel like work mode, and where I prefer to slot fitness, hobbies, or chores. Those choices flow straight into availability profiles, so every Rolling Wave plan or Focus Mode timer feels like it was written for me—not for some generic productivity robot. Later, when I sync tasks to my calendar, they land inside the windows I just described.
-
-### Rolling Wave Plan Review
-
-<img src="mobile/assets/images/Week%20one%20plan.png" alt="Week one plan review with editable tasks" width="360">
-<img src="mobile/assets/images/Week%202%20with%20goal.png" alt="Week two follow-up view showing evolving focus" width="360">
-
-Plan Review turns vague resolutions like “Learn piano” into a 4–12 week path, but only week one becomes concrete so you’re not overwhelmed by a wall of future tasks. You set the timeline, Sarthi decomposes it using your personalized context, and you can edit any Week 1 task before activating. Approving calls `/resolutions/{id}/approve`, materializing just those near-term tasks, logging the action, and allowing you to sync dated items to your device calendar so reminders fire at the right moment.
-
-### Weekly Focus Snapshot
-
-<img src="mobile/assets/images/Weekly%20Plan.png" alt="Weekly plan focus card with stats and resolve selector" width="360">
-<img src="mobile/assets/images/Weekly%20Overview.png" alt="Weekly overview dashboard card aggregating completion metrics" width="360">
-
-Rolling Wave is intentional: only Week 1 becomes actionable so you’re never staring at 12 weeks of impossible homework. Each Sunday Sarthi looks at what you actually completed, how many tasks spilled, and the preferences you set earlier, then stitches together the next micro-resolution plus the handful of tasks worth activating. If last week’s completion rate dipped, it lightens or reschedules; if you crushed it, it nudges you forward. `/weekly-plan/latest` surfaces that new focus, the “why this matters,” and completion stats per resolution. The dashboard “Weekly Overview” mirrors those numbers at a glance and bubbles up resolutions that need a nudge.
-
-### Intervention Coach
-
-<img src="mobile/assets/images/Intervantion.png" alt="Intervention card offering recovery options" width="360">
-
-Every Thursday, Sarthi runs an intervention check. If your week looks overloaded, `/interventions/latest` returns a card explaining the risk and three choices that keep agency with you: **Reschedule** automatically moves remaining tasks into your next free slots, **Reduce Load** trims scope for the week while logging a note, and **Short Break** parks the plan temporarily so you can recover guilt-free. Each button routes through `respondToIntervention` and records the outcome in `agent_actions_log`.
-
-### Focus Mode + Calendar Sync
-
-<img src="mobile/assets/images/Focus%20Mode.png" alt="Focus mode timer with quiet notifications and capture tools" width="360">
-
-When it’s go-time, Focus Mode silences notifications, puts one task front-and-center, and lets you log distracting thoughts via a mini Brain Dump so Opik’s evaluation engine can learn what derailed you. Completing the session marks the task done through `/tasks` and automatically loads the next item in your queue. Paired with the calendar sync step in Plan Review, Focus Mode keeps you anchored to the schedule you designed while still adapting if life happens.
-
-### Brain Dump Signal Extraction
-
-<img src="mobile/assets/images/Braindump.png" alt="Brain dump input and analysis showing emotions and actionable signals" width="360">
-
-When those Focus Mode notes swell into bigger feelings—or you just need to unload before starting—this screen is your pressure-release valve. You pour in raw text, and Sarthi’s `BrainDumpExtractor` detects **emotions**, **blockers**, and **intent shifts**, then reflects empathetic acknowledgement plus optional next steps (never surprise tasks). Accept an option and the backend routes it through `/tasks` or `/interventions/respond`; pass on it and Sarthi simply remembers the signal for future planning.
+- **Node.js** (LTS) and **npm** — for Expo / React Native.
+- **Python 3.11+** — for the FastAPI backend when added.
+- **PostgreSQL** — for production-like local development once the backend exists.
 
 ---
 
-## Core APIs & Flows
+## License
 
-| Flow | Endpoints | Notes |
-| --- | --- | --- |
-| Brain dump | `POST /brain-dump` | Stores `BrainDump` row, emits signals + agent log entry. |
-| Resolutions | `POST /resolutions`, `POST /resolutions/{id}/decompose`, `POST /resolutions/{id}/approve`, `GET /resolutions` | Decomposer generates `plan_v1` + draft tasks; approval activates tasks + logs actions. |
-| Weekly plan | `GET /weekly-plan/preview`, `POST /weekly-plan/run`, `GET /weekly-plan/latest`, history endpoints | Rolling Wave planner stores snapshots in `AgentActionLog` (`weekly_plan_generated`). Notifications fire via hooks when enabled. |
-| Interventions | `GET /interventions/preview`, `POST /interventions/run`, `GET /interventions/latest`, history endpoints, `POST /interventions/respond` | Thursday slippage cards plus follow-up option execution. Responses log `intervention_executed`. |
-| Tasks | `GET/POST/PATCH /tasks` | Supports completion toggles, edits, notes, metadata for draft vs active tasks. |
-| Preferences | `GET /preferences`, `PATCH /preferences` | Autonomy controls reflected in scheduler + notifications. |
-| Agent Log | `GET /agent-log`, `GET /agent-log/{id}` | Cursor-paginated transparency feed with summaries and undo flags. |
-| Jobs (ops) | `GET /jobs`, `POST /jobs/run-now` (when `DEBUG=true`) | Inspect scheduler config or trigger runs manually. |
-
----
-
-## Scheduler & Background Jobs
-
-- **Weekly plan job**: regenerates Rolling Wave plans for active users each week (`app/services/job_runner.py`). Skips paused users via `UserPreferences`.
-- **Intervention job**: runs Thursday 7 PM (configurable) to detect slippage and store snapshots.
-- **Task reminder job**: optional Expo push reminders for tasks within a configurable lookahead (`app/services/task_reminder.py`).
-- **Notifications**: Hooks (`app/services/notifications/hooks.py`) ensure weekly-plan/intervention snapshots enqueue notifications or log skips with reasons.
-
-All jobs emit metrics (`jobs.*`) and traces when Opik is enabled.
-
----
-
-## Transparency, Preferences & Safety
-
-- Every autonomous action writes to `agent_actions_log` (weekly plans, interventions, notifications, task edits, preference updates).
-- `AgentLog` APIs power the mobile transparency screens; entries note `undo_available` when relevant.
-- Preferences (`coaching_paused`, `weekly_plans_enabled`, `interventions_enabled`) propagate through schedulers, notification hooks, and the task reminder service.
-- `/jobs/run-now` respects these flags to avoid surprising users during manual testing.
-
----
-
-## Additional Docs
-
-- `docs/SRS_v2.5.pdf`: original system requirements + UX spec.
-- `docs/project_structure.md`: tree view of the repo.
-- `docs/backend_reference.md`: deep dive into backend modules and schema.
-- `docs/decisions.md`: guiding architecture principles.
-
-Dependency source of truth:
-
-- Backend dependencies are defined in `backend/pyproject.toml`.
-- `backend/requirements.txt` is a compatibility shim that installs from `pyproject.toml` to prevent version drift.
-
-Use these references alongside this README to onboard quickly or extend Sarthi AI with new agents, notification providers, or analytics.
+[MIT License](LICENSE)

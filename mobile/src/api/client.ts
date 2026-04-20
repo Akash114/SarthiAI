@@ -1,127 +1,90 @@
-import { API_BASE_URL } from "./config";
-import { refreshTokens } from "./auth";
-import { ApiError } from "./networkErrors";
-import { notifySessionInvalidated } from "../session/sessionInvalidated";
-import {
-  clearTokens,
-  getAccessTokenSync,
-  getRefreshTokenSync,
-  hasRefreshToken,
-  setTokensFromPair,
-} from "../session/sessionTokens";
+import { API_BASE_URL } from '../config';
+import { useSessionStore } from '../state/sessionStore';
 
-type ApiOptions = Omit<RequestInit, "body"> & {
-  body?: Record<string, unknown>;
-  /** Skip Authorization and 401→refresh (for auth endpoints or bootstrap). */
-  skipAuthRefresh?: boolean;
+export type AuthTokenResponse = {
+  access_token: string;
+  refresh_token: string;
+  access_expires_at: string;
+  refresh_expires_at: string;
 };
 
-let refreshInFlight: Promise<boolean> | null = null;
+const FETCH_TIMEOUT_MS = 20_000;
 
-async function refreshAccessTokenSingleFlight(): Promise<boolean> {
-  const refresh = getRefreshTokenSync();
-  if (!refresh) {
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+  constructor(status: number, body: unknown) {
+    super(`HTTP ${status}`);
+    this.status = status;
+    this.body = body;
+  }
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error('Request timed out — check API URL and that the server is reachable.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function refreshAccess(): Promise<boolean> {
+  const refresh = await useSessionStore.getState().readRefreshToken();
+  if (!refresh) return false;
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ refresh_token: refresh }),
+    });
+    if (!res.ok) return false;
+    const j = (await res.json()) as AuthTokenResponse;
+    useSessionStore.getState().setAccessToken(j.access_token);
+    await useSessionStore.getState().saveRefreshToken(j.refresh_token);
+    return true;
+  } catch {
     return false;
   }
-  if (!refreshInFlight) {
-    refreshInFlight = (async () => {
-      try {
-        const pair = await refreshTokens(refresh);
-        await setTokensFromPair(pair);
-        return true;
-      } catch {
-        await clearTokens();
-        notifySessionInvalidated();
-        return false;
-      } finally {
-        refreshInFlight = null;
-      }
-    })();
-  }
-  return refreshInFlight;
 }
 
-export async function apiRequest<TResponse>(
+export async function apiJson<T>(
   path: string,
-  options: ApiOptions = {},
-): Promise<{
-  data: TResponse;
-  response: Response;
-}> {
-  const { skipAuthRefresh = false, ...rest } = options;
-  return performRequest<TResponse>(path, { ...rest, skipAuthRefresh }, false);
-}
-
-async function performRequest<TResponse>(
-  path: string,
-  options: ApiOptions,
-  isRetry: boolean,
-): Promise<{
-  data: TResponse;
-  response: Response;
-}> {
-  const { skipAuthRefresh = false, body, ...init } = options;
+  init: RequestInit & { json?: unknown } = {},
+  _retried = false,
+): Promise<T> {
+  const token = useSessionStore.getState().accessToken;
   const headers: Record<string, string> = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
+    Accept: 'application/json',
     ...(init.headers as Record<string, string> | undefined),
   };
-
-  if (!skipAuthRefresh) {
-    const token = getAccessTokenSync();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let body: BodyInit | null | undefined = init.body ?? null;
+  if (init.json !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify(init.json);
   }
-
+  const res = await fetchWithTimeout(`${API_BASE_URL}${path}`, { ...init, headers, body });
+  if (res.status === 401 && path !== '/v1/auth/refresh' && !_retried) {
+    const ok = await refreshAccess();
+    if (ok) return apiJson<T>(path, init, true);
+  }
+  const text = await res.text();
+  let data: unknown = {};
   try {
-    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-    const response = await fetch(`${API_BASE_URL}${normalizedPath}`, {
-      ...init,
-      method: init.method ?? "GET",
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-
-    const text = await response.text();
-    const json = text ? JSON.parse(text) : null;
-
-    if (
-      response.status === 401 &&
-      !skipAuthRefresh &&
-      !isRetry &&
-      hasRefreshToken()
-    ) {
-      const ok = await refreshAccessTokenSingleFlight();
-      if (ok) {
-        return performRequest<TResponse>(path, options, true);
-      }
-      const message = json?.detail ?? "Session expired. Please sign in again.";
-      throw new ApiError(typeof message === "string" ? message : "Session expired", 401);
-    }
-
-    if (!response.ok) {
-      const message = json?.detail ?? response.statusText ?? "Request failed";
-      throw new ApiError(
-        typeof message === "string" ? message : "Request failed",
-        response.status,
-      );
-    }
-
-    return { data: json as TResponse, response };
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new ApiError(
-        `Network request failed. Make sure the backend server is running at ${API_BASE_URL}`,
-        0,
-        true,
-      );
-    }
-    throw error;
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
   }
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as T;
 }
-
-export { API_BASE_URL };

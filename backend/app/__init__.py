@@ -1,0 +1,1 @@
+"""Sarthi FastAPI application."""
