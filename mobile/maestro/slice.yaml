@@ -1,0 +1,23 @@
+appId: host.exp.exponent
+---
+- launchApp
+- assertVisible:
+    id: "auth-root"
+- tapOn:
+    id: "auth-register-btn"
+- assertVisible:
+    id: "slice-root"
+- tapOn:
+    id: "slice-next-btn"
+- tapOn:
+    id: "slice-next-btn"
+- tapOn:
+    id: "slice-next-btn"
+- tapOn:
+    id: "slice-next-btn"
+- tapOn:
+    id: "slice-next-btn"
+- tapOn:
+    id: "slice-next-btn"
+- assertVisible:
+    id: "slice-done-label"

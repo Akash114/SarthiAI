@@ -1,26 +1,45 @@
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as Sentry from '@sentry/react-native';
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import Splash from './assets/splash.svg';
+import { SENTRY_DSN } from './src/config';
+import { initAnalytics } from './src/lib/analytics';
+import { AuthScreen } from './src/screens/AuthScreen';
+import { SliceScreen } from './src/screens/SliceScreen';
+import { useSessionStore } from './src/state/sessionStore';
 
-export default function App() {
-  const { width, height } = useWindowDimensions();
+const Stack = createNativeStackNavigator();
+const queryClient = new QueryClient();
 
-  return (
-    <View style={styles.root} testID="splash-root">
-      <Splash
-        width={width}
-        height={height}
-        preserveAspectRatio="xMidYMid slice"
-      />
-      <StatusBar style="light" />
-    </View>
-  );
+function AuthScreenGate() {
+  return <AuthScreen />;
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#4338ca',
-  },
-});
+export default function App() {
+  const accessToken = useSessionStore((s) => s.accessToken);
+
+  useEffect(() => {
+    if (SENTRY_DSN) {
+      Sentry.init({ dsn: SENTRY_DSN });
+    }
+    void initAnalytics();
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <NavigationContainer>
+        <StatusBar style="dark" />
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          {accessToken ? (
+            <Stack.Screen name="Slice" component={SliceScreen} />
+          ) : (
+            <Stack.Screen name="Auth" component={AuthScreenGate} />
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </QueryClientProvider>
+  );
+}
