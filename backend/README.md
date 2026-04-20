@@ -39,6 +39,16 @@ FastAPI service implementing the frozen `/v1` contract ([docs/contracts/openapi.
    python -m app.worker
    ```
 
+   Optional third process for **scheduled** reminders / week-1 recovery (`SCHEDULER_ENABLED=true`):
+
+   ```bash
+   python -m app.scheduler_main
+   ```
+
+## Deployed environments
+
+When **`ENVIRONMENT`** is set to `production`, `staging`, `prod`, or `preview`, the API, RQ worker, and scheduler refuse to start unless **`JWT_SECRET`** is a unique value **≥ 32 characters** (not the default from [app/config.py](app/config.py)). Unauthenticated auth routes (`/v1/auth/register`, `/login`, `/refresh`) are **rate-limited** per client IP (`AUTH_RATE_LIMIT_PER_MINUTE`, `0` disables). See [docs/operations/runbooks.md](../docs/operations/runbooks.md).
+
 ## Contract tests
 
 `pytest` uses an **in-memory SQLite** database and an **inline RQ stub** (see [tests/conftest.py](tests/conftest.py)); you do **not** need Docker for the default suite.

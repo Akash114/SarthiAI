@@ -1,7 +1,14 @@
-"""RQ job: stub week-1 plan generation."""
+"""RQ job: week-1 plan generation (planner service + persistence).
+
+Idempotency: safe to enqueue multiple times for the same resolution. If
+``week_1_plan_status`` is already ``ready`` or tasks already exist, the job exits
+without duplicating tasks. On planner failure, status becomes ``failed``; the
+client may call generate-week-1 again to re-enqueue.
+"""
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -15,9 +22,12 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import get_session_factory
 from app.models.intervention import Intervention
+from app.models.plan_snapshot import PlanSnapshot
 from app.models.resolution import Resolution
 from app.models.task import Task
 from app.models.transparency import TransparencyEntry
+from app.services.notifications import send_intervention_prompt_push
+from app.services.planner import generate_week1_plan
 
 logger = logging.getLogger(__name__)
 _tracer = get_tracer(__name__)
@@ -72,65 +82,102 @@ def run_generate_week1(resolution_id: str) -> None:
 
 
 def _run(db: Session, resolution_id: UUID) -> UUID | None:
+    settings = get_settings()
     res = db.get(Resolution, resolution_id)
     if res is None:
         return None
     if res.week_1_plan_status == "ready":
         return None
+
     existing_tasks = db.scalar(
         select(func.count()).select_from(Task).where(Task.resolution_id == resolution_id)
     )
     if existing_tasks and existing_tasks > 0:
         res.week_1_plan_status = "ready"
+        res.updated_at = datetime.now(UTC)
         return None
 
     res.week_1_plan_status = "pending"
     db.flush()
 
-    titles = [
-        "Define your first small win",
-        "Block 30 minutes this week",
-        "Tell one person your commitment",
-    ]
-    for i, title in enumerate(titles):
+    try:
+        plan = generate_week1_plan(settings, res.title, res.detail)
+    except Exception as exc:
+        logger.exception("planner_failed")
+        res.week_1_plan_status = "failed"
+        res.plan_metadata_json = {"error": str(exc)[:500], "planner": "error"}
+        res.updated_at = datetime.now(UTC)
+        db.add(
+            TransparencyEntry(
+                user_id=res.user_id,
+                action_type="plan_failed",
+                headline="Week 1 plan could not be generated",
+                detail="You can try again from the app.",
+            )
+        )
+        return res.user_id
+
+    now = datetime.now(UTC)
+    week_end = now + timedelta(days=7)
+    meta = {
+        "planner_version": plan.planner_version,
+        "source": plan.source,
+        "task_count": len(plan.task_titles),
+    }
+    res.plan_metadata_json = meta
+    res.updated_at = now
+
+    for i, title in enumerate(plan.task_titles):
         db.add(
             Task(
                 resolution_id=res.id,
                 title=title,
                 status="open",
                 sort_order=i,
-                due_window_starts_at=datetime.now(UTC),
-                due_window_ends_at=datetime.now(UTC) + timedelta(days=7),
+                due_window_starts_at=now,
+                due_window_ends_at=week_end,
             )
         )
 
     res.week_1_plan_status = "ready"
     db.add(
+        PlanSnapshot(
+            user_id=res.user_id,
+            resolution_id=res.id,
+            kind="week1_committed",
+            planner_version=plan.planner_version,
+            tasks_json=json.dumps([{"title": t, "sort_order": i} for i, t in enumerate(plan.task_titles)]),
+            created_at=now,
+        )
+    )
+    db.add(
         TransparencyEntry(
             user_id=res.user_id,
             action_type="plan_generated",
             headline="Week 1 plan created",
-            detail="Stub planner generated actionable tasks.",
+            detail=f"Planner ({plan.planner_version}) generated {len(plan.task_titles)} tasks.",
         )
     )
+
     pending_iv = db.scalars(
         select(Intervention).where(
             Intervention.user_id == res.user_id,
             Intervention.status == "pending",
         )
     ).first()
+    intervention: Intervention | None = None
     if pending_iv is None:
-        db.add(
-            Intervention(
-                user_id=res.user_id,
-                resolution_id=res.id,
-                status="pending",
-                summary=(
-                    "Quick check-in: how does your first week feel? "
-                    "Approve to log encouragement or dismiss to skip."
-                ),
-            )
+        intervention = Intervention(
+            user_id=res.user_id,
+            resolution_id=res.id,
+            status="pending",
+            summary=(
+                "Quick check-in: how does your first week feel? "
+                "Approve to log encouragement or dismiss to skip."
+            ),
         )
+        db.add(intervention)
+        db.flush()
         db.add(
             TransparencyEntry(
                 user_id=res.user_id,
@@ -139,4 +186,12 @@ def _run(db: Session, resolution_id: UUID) -> UUID | None:
                 detail="You can approve or dismiss from the app.",
             )
         )
+
+    db.flush()
+    if intervention is not None:
+        try:
+            send_intervention_prompt_push(db, settings, res.user_id, intervention)
+        except Exception:
+            logger.exception("intervention_push_failed")
+
     return res.user_id

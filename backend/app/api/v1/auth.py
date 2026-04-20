@@ -21,6 +21,8 @@ from app.schemas.api import (
     AuthRefreshRequest,
     AuthRegisterRequest,
     AuthTokenResponse,
+    MergeAnonymousRequest,
+    MergeAnonymousResponse,
 )
 from app.security.jwt_tokens import (
     create_access_token,
@@ -30,8 +32,22 @@ from app.security.jwt_tokens import (
     parse_refresh_payload,
 )
 from app.security.password import hash_password, verify_password
+from app.services.auth_rate_limit import enforce_auth_rate_limit
+from app.services.merge_anonymous import MergeConflictError, merge_anonymous_into_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _rate_register(request: Request) -> None:
+    enforce_auth_rate_limit(request, "register")
+
+
+def _rate_login(request: Request) -> None:
+    enforce_auth_rate_limit(request, "login")
+
+
+def _rate_refresh(request: Request) -> None:
+    enforce_auth_rate_limit(request, "refresh")
 
 
 def _issue_tokens(db: Session, user_id: UUID) -> AuthTokenResponse:
@@ -60,6 +76,7 @@ def register(
     request: Request,
     body: AuthRegisterRequest,
     db: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(_rate_register)],
     posthog=Depends(get_posthog),
 ) -> AuthTokenResponse:
     rid = _rid(request)
@@ -96,6 +113,7 @@ def login(
     request: Request,
     body: AuthLoginRequest,
     db: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(_rate_login)],
     posthog=Depends(get_posthog),
 ) -> AuthTokenResponse:
     rid = _rid(request)
@@ -122,6 +140,7 @@ def refresh(
     request: Request,
     body: AuthRefreshRequest,
     db: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(_rate_refresh)],
 ) -> AuthTokenResponse:
     rid = _rid(request)
     try:
@@ -162,6 +181,36 @@ def refresh(
     tokens = _issue_tokens(db, user_id)
     db.commit()
     return tokens
+
+
+@router.post("/merge-anonymous", response_model=MergeAnonymousResponse)
+def merge_anonymous(
+    request: Request,
+    body: MergeAnonymousRequest,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
+) -> MergeAnonymousResponse:
+    rid = _rid(request)
+    try:
+        merged = merge_anonymous_into_user(db, user_id, body.anonymous_user_id)
+    except MergeConflictError as exc:
+        raise ApiError(
+            409,
+            code="merge_conflict",
+            message=exc.message,
+            request_id=rid,
+        ) from exc
+    except ValueError as exc:
+        raise ApiError(400, code="validation", message=str(exc), request_id=rid) from exc
+    db.commit()
+    if posthog is not None and merged:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("anonymous user merged")
+    if not merged:
+        return MergeAnonymousResponse(merged=False, message="Anonymous user not found")
+    return MergeAnonymousResponse(merged=True, message="Data merged into this account")
 
 
 @router.post("/logout", status_code=204, response_class=Response)

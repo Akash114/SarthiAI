@@ -35,6 +35,9 @@ class JsonLogFormatter(logging.Formatter):
         rid_extra = getattr(record, "resolution_id", None)
         if rid_extra:
             payload["resolution_id"] = rid_extra
+        for key in ("route_key", "client_host", "ops_job", "ops_processed", "ops_detail"):
+            if key in record.__dict__:
+                payload[key] = record.__dict__[key]
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False)

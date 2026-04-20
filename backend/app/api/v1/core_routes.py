@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Body, Depends, Header, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -35,6 +35,7 @@ from app.schemas.api import (
     ResolutionPatchRequest,
     Task,
     TaskListResponse,
+    TaskPatchRequest,
     TransparencyEntry,
     TransparencyLogPage,
 )
@@ -228,6 +229,7 @@ def resolutions_generate_week_1(
     if r.week_1_plan_status == "pending":
         out = GenerateWeek1Response(week_1_plan_status="pending", job_id=None)
         return out
+    # failed / not_requested → (re)enqueue
     r.week_1_plan_status = "pending"
     db.commit()
     tp = traceparent_from_context()
@@ -256,6 +258,77 @@ def resolutions_generate_week_1(
         with new_context():
             identify_context(str(user_id))
             posthog.capture("week 1 plan requested", properties={"resolution_id": str(resolution_id)})
+    return out
+
+
+@router.get("/tasks/{task_id}", response_model=Task)
+def task_get(
+    request: Request,
+    task_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+) -> Task:
+    rid = _rid(request)
+    t = db.get(TaskORM, task_id)
+    if t is None:
+        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
+    r = db.get(ResolutionORM, t.resolution_id)
+    if r is None or r.user_id != user_id:
+        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
+    return Task.model_validate(t)
+
+
+@router.patch("/tasks/{task_id}", response_model=Task)
+def task_patch(
+    request: Request,
+    task_id: UUID,
+    body: TaskPatchRequest,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> Task | Response:
+    rid = _rid(request)
+    replay = replay_if_exists(
+        db,
+        user_id=user_id,
+        idempotency_key=idempotency_key,
+        scope=f"task_patch:{task_id}",
+    )
+    if replay is not None:
+        return replay
+    t = db.get(TaskORM, task_id)
+    if t is None:
+        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
+    r = db.get(ResolutionORM, t.resolution_id)
+    if r is None or r.user_id != user_id:
+        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
+    if body.title is not None:
+        t.title = body.title
+    if body.note is not None:
+        meta = dict(t.metadata_json or {})
+        if body.note == "":
+            meta.pop("note", None)
+        else:
+            meta["note"] = body.note
+        t.metadata_json = meta if meta else None
+    db.commit()
+    db.refresh(t)
+    out = Task.model_validate(t)
+    if idempotency_key and len(idempotency_key) >= 8:
+        store(
+            db,
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+            scope=f"task_patch:{task_id}",
+            response_status=200,
+            body=out.model_dump(mode="json"),
+        )
+        db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("task updated", properties={"resolution_id": str(t.resolution_id)})
     return out
 
 
@@ -471,6 +544,20 @@ def _decode_cursor(cur: str | None) -> tuple[datetime, UUID] | None:
         return None
 
 
+@router.get("/transparency-log/{entry_id}", response_model=TransparencyEntry)
+def transparency_entry_get(
+    request: Request,
+    entry_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+) -> TransparencyEntry:
+    rid = _rid(request)
+    e = db.get(TransparencyORM, entry_id)
+    if e is None or e.user_id != user_id:
+        raise ApiError(404, code="not_found", message="Entry not found", request_id=rid)
+    return TransparencyEntry.model_validate(e)
+
+
 @router.get("/transparency-log", response_model=TransparencyLogPage)
 def transparency_list(
     request: Request,
@@ -478,11 +565,14 @@ def transparency_list(
     user_id: Annotated[UUID, Depends(current_user_id)],
     cursor: str | None = None,
     limit: int = 20,
+    action_type: str | None = None,
 ) -> TransparencyLogPage:
     rid = _rid(request)
     if limit < 1 or limit > 100:
         raise ApiError(400, code="validation", message="limit must be 1-100", request_id=rid)
     q = select(TransparencyORM).where(TransparencyORM.user_id == user_id)
+    if action_type:
+        q = q.where(TransparencyORM.action_type == action_type)
     c = _decode_cursor(cursor)
     if c:
         t0, id0 = c
@@ -527,6 +617,7 @@ def devices_push_token(
     if existing:
         existing.platform = body.platform
         existing.device_id = body.device_id
+        existing.invalidated_at = None
         existing.created_at = datetime.now(UTC)
     else:
         db.add(
@@ -538,4 +629,24 @@ def devices_push_token(
             )
         )
     db.commit()
+    return Response(status_code=204)
+
+
+@router.delete("/devices/push-token", status_code=204, response_class=Response)
+def devices_push_token_delete(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+    body: PushTokenRegisterRequest = Body(...),
+) -> Response:
+    rid = _rid(request)
+    row = db.scalar(
+        select(DevicePushToken).where(
+            DevicePushToken.user_id == user_id,
+            DevicePushToken.expo_push_token == body.expo_push_token,
+        )
+    )
+    if row:
+        db.delete(row)
+        db.commit()
     return Response(status_code=204)

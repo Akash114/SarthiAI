@@ -23,6 +23,8 @@ def _settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:6379/15")
     monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
+    monkeypatch.delenv("SENTRY_DSN", raising=False)
+    monkeypatch.setenv("AUTH_RATE_LIMIT_PER_MINUTE", "0")
     get_settings.cache_clear()
 
 

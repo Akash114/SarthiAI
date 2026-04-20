@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -39,6 +39,15 @@ class AuthLogoutRequest(BaseModel):
     revoke_all: bool = False
 
 
+class MergeAnonymousRequest(BaseModel):
+    anonymous_user_id: UUID
+
+
+class MergeAnonymousResponse(BaseModel):
+    merged: bool
+    message: str
+
+
 class AuthTokenResponse(BaseModel):
     access_token: str
     access_expires_at: datetime
@@ -59,12 +68,40 @@ class OnboardingPatchRequest(BaseModel):
     mark_completed: bool = False
 
 
+class CoachingPreferencesState(BaseModel):
+    coaching_paused: bool
+    task_reminders_enabled: bool
+    interventions_enabled: bool
+    timezone: str | None = None
+    updated_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class CoachingPreferencesPatchRequest(BaseModel):
+    coaching_paused: bool | None = None
+    task_reminders_enabled: bool | None = None
+    interventions_enabled: bool | None = None
+    timezone: str | None = Field(None, max_length=64)
+
+
+class BrainDumpRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
+
+
+class BrainDumpResponse(BaseModel):
+    id: UUID
+    actionable: bool
+    signals: dict[str, Any]
+
+
 class Resolution(BaseModel):
     id: UUID
     title: str
     detail: str | None = None
     status: str
     week_1_plan_status: str
+    plan_metadata_json: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
@@ -91,6 +128,86 @@ class GenerateWeek1Response(BaseModel):
     job_id: str | None = None
 
 
+class Week1PreviewTask(BaseModel):
+    title: str
+    sort_order: int
+
+
+class Week1PreviewResponse(BaseModel):
+    planner_version: str
+    source: str
+    tasks: list[Week1PreviewTask]
+    snapshot_id: UUID
+
+
+class PlanSnapshotItem(BaseModel):
+    id: UUID
+    kind: str
+    planner_version: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PlanSnapshotDetail(BaseModel):
+    id: UUID
+    kind: str
+    planner_version: str
+    tasks: list[Week1PreviewTask]
+    created_at: datetime
+
+
+class PlanHistoryResponse(BaseModel):
+    items: list[PlanSnapshotItem]
+
+
+class DashboardResolutionSummary(BaseModel):
+    id: UUID
+    title: str
+    week_1_plan_status: str
+    open_tasks: int
+    completed_tasks: int
+
+
+class DashboardResponse(BaseModel):
+    resolution: DashboardResolutionSummary | None
+    pending_intervention: bool
+
+
+class JourneyTaskItem(BaseModel):
+    id: UUID
+    title: str
+    status: str
+    due_window_ends_at: datetime | None = None
+
+
+class DailyJourneyResponse(BaseModel):
+    date: datetime
+    tasks: list[JourneyTaskItem]
+
+
+class NotificationsConfigResponse(BaseModel):
+    enabled: bool
+    provider: str
+
+
+class OpsJobsConfigResponse(BaseModel):
+    scheduler_enabled: bool
+    timezone: str
+    jobs: list[dict[str, str]]
+
+
+class OpsJobRunRequest(BaseModel):
+    job: Literal["reminders", "week1_recover"]
+    resolution_id: UUID | None = None
+
+
+class OpsJobRunResponse(BaseModel):
+    job: str
+    processed: int
+    detail: str | None = None
+
+
 class Task(BaseModel):
     id: UUID
     resolution_id: UUID
@@ -99,8 +216,14 @@ class Task(BaseModel):
     sort_order: int
     due_window_starts_at: datetime | None = None
     due_window_ends_at: datetime | None = None
+    metadata_json: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}
+
+
+class TaskPatchRequest(BaseModel):
+    title: str | None = Field(None, max_length=500)
+    note: str | None = Field(None, max_length=500)
 
 
 class TaskListResponse(BaseModel):

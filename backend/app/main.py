@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings = get_settings()
+    from app.config import validate_settings_for_environment
+
+    validate_settings_for_environment(settings)
     if settings.posthog_api_key:
         posthog_client = Posthog(
             settings.posthog_api_key,

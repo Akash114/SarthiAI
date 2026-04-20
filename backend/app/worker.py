@@ -2,7 +2,7 @@
 
 from rq import Worker
 
-from app.config import get_settings
+from app.config import get_settings, validate_settings_for_environment
 from app.observability.logging_json import configure_logging
 from app.observability.otel_setup import setup_tracing
 from app.observability.sentry_setup import init_sentry_worker
@@ -11,6 +11,7 @@ from app.queue import redis_connection, task_queue
 
 def main() -> None:
     s = get_settings()
+    validate_settings_for_environment(s)
     configure_logging(s.log_level)
     setup_tracing(
         service_name=s.otel_worker_service_name,

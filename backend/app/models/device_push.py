@@ -16,4 +16,5 @@ class DevicePushToken(Base):
     expo_push_token: Mapped[str] = mapped_column(String(512))
     platform: Mapped[str] = mapped_column(String(16))
     device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

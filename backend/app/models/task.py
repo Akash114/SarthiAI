@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -23,5 +23,7 @@ class Task(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     due_window_starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     due_window_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     resolution: Mapped["Resolution"] = relationship(back_populates="tasks")

@@ -8,6 +8,7 @@ from sqlalchemy import DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.models.user_coaching_preferences import UserCoachingPreferences
 
 if TYPE_CHECKING:
     from app.models.onboarding import UserOnboarding
@@ -34,4 +35,9 @@ class User(Base):
     )
     resolutions: Mapped[list[Resolution]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+    coaching_preferences: Mapped[UserCoachingPreferences | None] = relationship(
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
