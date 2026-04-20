@@ -1,37 +1,33 @@
 {
   "expo": {
-    "name": "Sarthi AI",
-    "slug": "sarthiai",
-    "extra": {
-      "eas": {
-        "projectId": "a005f37e-2bd2-4483-af1c-7579dbb9da85"
-      }
-    },
-    "version": "0.1.0",
+    "name": "mobile",
+    "slug": "mobile",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "sarthiai",
     "userInterfaceStyle": "light",
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "updates": {
-      "fallbackToCacheTimeout": 0
+      "backgroundColor": "#4338ca"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.akash114.sarthiai"
+      "supportsTablet": true
     },
     "android": {
-      "package": "com.akash114.sarthiai"
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
     },
     "web": {
-      "bundler": "metro"
+      "favicon": "./assets/favicon.png"
     }
   }
 }
