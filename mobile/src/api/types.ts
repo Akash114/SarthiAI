@@ -97,6 +97,13 @@ export interface Task {
   metadata_json?: Record<string, unknown>;
 }
 
+export interface TaskCreateRequest {
+  title: string;
+  resolution_id?: string;
+  note?: string;
+  sort_order?: number;
+}
+
 export interface TaskPatchRequest {
   title?: string;
   note?: string;

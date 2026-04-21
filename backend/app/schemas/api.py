@@ -237,6 +237,13 @@ class Task(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TaskCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+    resolution_id: UUID | None = None
+    note: str | None = Field(None, max_length=500)
+    sort_order: int | None = Field(None, ge=0, le=100_000)
+
+
 class TaskPatchRequest(BaseModel):
     title: str | None = Field(None, max_length=500)
     note: str | None = Field(None, max_length=500)

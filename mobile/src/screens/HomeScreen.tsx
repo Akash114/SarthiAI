@@ -1,14 +1,23 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { useTheme } from '../theme';
-import { Screen, Card, SegmentedToggle, ProgressRing, Button } from '../components';
+import { Screen, Card, SegmentedToggle, ProgressRing, Button, Modal } from '../components';
 import { useDashboard, useJourneyDaily, useMe } from '../hooks/queries';
 import { useUIStore } from '../state/uiStore';
+import { useCreateResolution, useCreateTask } from '../hooks/mutations';
 import type { HomeStackScreenProps } from '../navigation/types';
 
 export function HomeScreen({ navigation }: HomeStackScreenProps<'Home'>) {
   const { colors, spacing, typography } = useTheme();
   const { personalWorkIndex, setPersonalWorkIndex } = useUIStore();
+  const [fabOpen, setFabOpen] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [goalTitle, setGoalTitle] = useState('');
+  const [goalDetail, setGoalDetail] = useState('');
+  const createTask = useCreateTask();
+  const createResolution = useCreateResolution();
   const { data: dashboard } = useDashboard();
   const { data: me } = useMe();
   const { data: journey } = useJourneyDaily();
@@ -20,6 +29,41 @@ export function HomeScreen({ navigation }: HomeStackScreenProps<'Home'>) {
 
   const openTasks = journey?.tasks?.filter((t) => t.status === 'open') ?? [];
   const nextTask = openTasks[0];
+  const creatingTask = createTask.isPending;
+  const creatingGoal = createResolution.isPending;
+
+  const closeFabMenu = () => setFabOpen(false);
+
+  const handleCreateTask = async () => {
+    const title = taskTitle.trim();
+    if (!title) return;
+    try {
+      await createTask.mutateAsync({ title });
+      setTaskTitle('');
+      setShowTaskModal(false);
+    } catch (error) {
+      Alert.alert('Could not add task', error instanceof Error ? error.message : 'Please try again.');
+    }
+  };
+
+  const handleCreateGoal = async () => {
+    const title = goalTitle.trim();
+    if (!title) return;
+    try {
+      const created = await createResolution.mutateAsync({
+        title,
+        detail: goalDetail.trim() || undefined,
+      });
+      setGoalTitle('');
+      setGoalDetail('');
+      setShowGoalModal(false);
+      navigation
+        .getParent()
+        ?.navigate('PlanTab', { screen: 'PlanReview', params: { resolutionId: created.id } });
+    } catch (error) {
+      Alert.alert('Could not add goal', error instanceof Error ? error.message : 'Please try again.');
+    }
+  };
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -112,14 +156,78 @@ export function HomeScreen({ navigation }: HomeStackScreenProps<'Home'>) {
           </Card>
         )}
 
-        <Pressable
-          testID="home-braindump-fab"
-          onPress={() => navigation.navigate('BrainDumpModal', {})}
-          style={[styles.fab, { backgroundColor: colors.indigo }]}
-        >
-          <Text style={{ color: colors.white, fontSize: 24 }}>+</Text>
+        {fabOpen ? <Pressable style={styles.fabBackdrop} onPress={closeFabMenu} /> : null}
+        {fabOpen ? (
+          <View style={styles.fabMenu}>
+            <Pressable
+              testID="home-add-task-fab"
+              style={[styles.fabOption, { backgroundColor: colors.success }]}
+              onPress={() => {
+                closeFabMenu();
+                setShowTaskModal(true);
+              }}
+            >
+              <Text style={styles.fabOptionText}>New Task</Text>
+            </Pressable>
+            <Pressable
+              testID="home-add-goal-fab"
+              style={[styles.fabOption, { backgroundColor: colors.warning }]}
+              onPress={() => {
+                closeFabMenu();
+                setShowGoalModal(true);
+              }}
+            >
+              <Text style={styles.fabOptionText}>New Goal</Text>
+            </Pressable>
+            <Pressable
+              testID="home-braindump-fab"
+              style={[styles.fabOption, { backgroundColor: colors.indigo }]}
+              onPress={() => {
+                closeFabMenu();
+                navigation.navigate('BrainDumpModal', {});
+              }}
+            >
+              <Text style={styles.fabOptionText}>Brain Dump</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <Pressable testID="home-fab" onPress={() => setFabOpen((v) => !v)} style={[styles.fab, { backgroundColor: colors.indigo }]}>
+          <Text style={{ color: colors.white, fontSize: 24 }}>{fabOpen ? '×' : '+'}</Text>
         </Pressable>
       </ScrollView>
+      <Modal visible={showTaskModal} onDismiss={() => setShowTaskModal(false)} title="Add task">
+        <TextInput
+          testID="task-title-input"
+          style={[styles.creatorInput, { borderColor: colors.border, color: colors.text }]}
+          placeholder="Task title"
+          placeholderTextColor={colors.textMuted}
+          value={taskTitle}
+          onChangeText={setTaskTitle}
+          autoFocus
+        />
+        <Button title="Create task" onPress={handleCreateTask} loading={creatingTask} />
+      </Modal>
+      <Modal visible={showGoalModal} onDismiss={() => setShowGoalModal(false)} title="Add goal">
+        <TextInput
+          testID="goal-title-input"
+          style={[styles.creatorInput, { borderColor: colors.border, color: colors.text }]}
+          placeholder="Goal title"
+          placeholderTextColor={colors.textMuted}
+          value={goalTitle}
+          onChangeText={setGoalTitle}
+          autoFocus
+        />
+        <TextInput
+          testID="goal-detail-input"
+          style={[styles.creatorInput, styles.creatorMultiline, { borderColor: colors.border, color: colors.text }]}
+          placeholder="Optional details"
+          placeholderTextColor={colors.textMuted}
+          multiline
+          value={goalDetail}
+          onChangeText={setGoalDetail}
+        />
+        <Button title="Create goal" onPress={handleCreateGoal} loading={creatingGoal} />
+      </Modal>
     </Screen>
   );
 }
@@ -136,6 +244,27 @@ const styles = StyleSheet.create({
   quickCard: { minHeight: 88 },
   momentumGrid: { flexDirection: 'row', gap: 16, justifyContent: 'space-around' },
   momentumCol: { alignItems: 'center', flex: 1 },
+  fabBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  fabMenu: {
+    position: 'absolute',
+    right: 12,
+    bottom: 76,
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  fabOption: {
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  fabOptionText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   fab: {
     position: 'absolute',
     right: 12,
@@ -150,5 +279,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
+  },
+  creatorInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  creatorMultiline: {
+    minHeight: 90,
+    textAlignVertical: 'top',
   },
 });

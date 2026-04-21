@@ -7,7 +7,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Header, Request, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from posthog import identify_context, new_context
@@ -34,6 +34,7 @@ from app.schemas.api import (
     ResolutionCurrentResponse,
     ResolutionPatchRequest,
     Task,
+    TaskCreateRequest,
     TaskListResponse,
     TaskPatchRequest,
     TransparencyEntry,
@@ -372,6 +373,95 @@ def tasks_list(
         select(TaskORM).where(TaskORM.resolution_id == resolution_id).order_by(TaskORM.sort_order)
     ).all()
     return TaskListResponse(tasks=[Task.model_validate(t) for t in tasks])
+
+
+@router.post("/tasks", response_model=Task, status_code=201)
+def tasks_create(
+    request: Request,
+    body: TaskCreateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> Task | Response:
+    rid = _rid(request)
+    replay = replay_if_exists(
+        db,
+        user_id=user_id,
+        idempotency_key=idempotency_key,
+        scope="task_create",
+    )
+    if replay is not None:
+        return replay
+
+    resolution: ResolutionORM | None
+    if body.resolution_id is not None:
+        resolution = db.get(ResolutionORM, body.resolution_id)
+        if resolution is None or resolution.user_id != user_id:
+            raise ApiError(404, code="not_found", message="Resolution not found", request_id=rid)
+        if resolution.status not in ("draft", "active"):
+            raise ApiError(
+                400,
+                code="invalid_state",
+                message="Cannot add tasks to an inactive resolution",
+                request_id=rid,
+            )
+    else:
+        resolution = _active_resolution(db, user_id)
+        if resolution is None:
+            # Preserve the old app behavior: quick tasks can be created directly
+            # from Home, even before a user explicitly creates their first goal.
+            resolution = ResolutionORM(
+                user_id=user_id,
+                title="Quick Tasks",
+                detail="Auto-created for quick task capture",
+                status="active",
+                week_1_plan_status="not_requested",
+            )
+            db.add(resolution)
+            db.flush()
+
+    max_sort = db.scalar(
+        select(func.max(TaskORM.sort_order)).where(TaskORM.resolution_id == resolution.id)
+    )
+    sort_order = body.sort_order if body.sort_order is not None else int(max_sort or -1) + 1
+
+    metadata_json = {"note": body.note} if body.note else None
+    t = TaskORM(
+        resolution_id=resolution.id,
+        title=body.title,
+        status="open",
+        sort_order=sort_order,
+        metadata_json=metadata_json,
+    )
+    db.add(t)
+    db.flush()
+    db.add(
+        TransparencyORM(
+            user_id=user_id,
+            action_type="task_created",
+            headline="Task added",
+            detail=body.title[:500],
+        )
+    )
+    db.commit()
+    db.refresh(t)
+    out = Task.model_validate(t)
+    if idempotency_key and len(idempotency_key) >= 8:
+        store(
+            db,
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+            scope="task_create",
+            response_status=201,
+            body=out.model_dump(mode="json"),
+        )
+        db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("task created", properties={"resolution_id": str(resolution.id)})
+    return out
 
 
 @router.post("/tasks/{task_id}/complete", response_model=Task)

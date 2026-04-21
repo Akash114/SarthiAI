@@ -6,6 +6,7 @@ import type {
   BrainDumpRequest,
   BrainDumpResponse,
   ResolutionCreateRequest,
+  TaskCreateRequest,
   ResolutionPatchRequest,
   TaskPatchRequest,
   FocusSessionCreateRequest,
@@ -68,6 +69,24 @@ export function useCreateResolution() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['resolution'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useCreateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (json: TaskCreateRequest) =>
+      apiJson<{ id: string }>('/v1/tasks', {
+        method: 'POST',
+        json,
+        headers: { 'Idempotency-Key': idempotencyKey('/v1/tasks') },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['journey'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['resolution', 'current'] });
     },
   });
 }
