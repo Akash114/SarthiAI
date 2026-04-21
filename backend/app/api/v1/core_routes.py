@@ -312,6 +312,31 @@ def task_patch(
         else:
             meta["note"] = body.note
         t.metadata_json = meta if meta else None
+    if body.sort_order is not None:
+        t.sort_order = body.sort_order
+    if body.status is not None:
+        if body.status == t.status:
+            pass
+        elif body.status == "completed":
+            t.status = "completed"
+        elif body.status == "skipped":
+            if t.status == "completed":
+                raise ApiError(
+                    400,
+                    code="invalid_state",
+                    message="Cannot skip a completed task",
+                    request_id=rid,
+                )
+            t.status = "skipped"
+        elif body.status == "open":
+            if t.status == "completed":
+                raise ApiError(
+                    400,
+                    code="invalid_state",
+                    message="Cannot reopen a completed task",
+                    request_id=rid,
+                )
+            t.status = "open"
     db.commit()
     db.refresh(t)
     out = Task.model_validate(t)
@@ -391,6 +416,56 @@ def tasks_complete(
         with new_context():
             identify_context(str(user_id))
             posthog.capture("task completed", properties={"resolution_id": str(t.resolution_id)})
+    return out
+
+
+@router.post("/tasks/{task_id}/skip", response_model=Task)
+def tasks_skip(
+    request: Request,
+    task_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+    posthog=Depends(get_posthog),
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> Task | Response:
+    rid = _rid(request)
+    replay = replay_if_exists(
+        db,
+        user_id=user_id,
+        idempotency_key=idempotency_key,
+        scope=f"task_skip:{task_id}",
+    )
+    if replay is not None:
+        return replay
+    t = db.get(TaskORM, task_id)
+    if t is None:
+        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
+    r = db.get(ResolutionORM, t.resolution_id)
+    if r is None or r.user_id != user_id:
+        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
+    if t.status == "skipped":
+        out = Task.model_validate(t)
+    elif t.status == "completed":
+        raise ApiError(400, code="invalid_state", message="Cannot skip a completed task", request_id=rid)
+    else:
+        t.status = "skipped"
+        db.commit()
+        db.refresh(t)
+        out = Task.model_validate(t)
+    if idempotency_key and len(idempotency_key) >= 8:
+        store(
+            db,
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+            scope=f"task_skip:{task_id}",
+            response_status=200,
+            body=out.model_dump(mode="json"),
+        )
+        db.commit()
+    if posthog is not None:
+        with new_context():
+            identify_context(str(user_id))
+            posthog.capture("task skipped", properties={"resolution_id": str(t.resolution_id)})
     return out
 
 

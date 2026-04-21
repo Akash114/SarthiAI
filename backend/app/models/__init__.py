@@ -1,5 +1,6 @@
 from app.models.brain_dump import BrainDump
 from app.models.device_push import DevicePushToken
+from app.models.focus_session import FocusSession
 from app.models.plan_snapshot import PlanSnapshot
 from app.models.idempotency import IdempotencyRecord
 from app.models.intervention import Intervention
@@ -24,4 +25,5 @@ __all__ = [
     "PlanSnapshot",
     "UserCoachingPreferences",
     "BrainDump",
+    "FocusSession",
 ]

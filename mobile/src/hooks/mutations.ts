@@ -8,6 +8,8 @@ import type {
   ResolutionCreateRequest,
   ResolutionPatchRequest,
   TaskPatchRequest,
+  FocusSessionCreateRequest,
+  FocusSessionResponse,
 } from '../api/types';
 import type { Intervention } from '../api/types';
 
@@ -127,6 +129,50 @@ export function useCompleteTask(taskId: string) {
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['journey'] });
     },
+  });
+}
+
+/** Complete any task by id (e.g. list rows where hook-per-id is awkward). */
+export function useCompleteTaskById() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) =>
+      apiJson(`/v1/tasks/${taskId}/complete`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey(`/v1/tasks/${taskId}/complete`) },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['journey'] });
+    },
+  });
+}
+
+export function useSkipTaskById() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) =>
+      apiJson(`/v1/tasks/${taskId}/skip`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey(`/v1/tasks/${taskId}/skip`) },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['journey'] });
+    },
+  });
+}
+
+export function useStartFocusSession() {
+  return useMutation({
+    mutationFn: (json: FocusSessionCreateRequest) =>
+      apiJson<FocusSessionResponse>('/v1/focus-sessions', {
+        method: 'POST',
+        json,
+        headers: { 'Idempotency-Key': idempotencyKey('/v1/focus-sessions') },
+      }),
   });
 }
 

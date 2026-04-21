@@ -42,6 +42,27 @@ export function InterventionsScreen({ navigation }: InterventionsStackScreenProp
         {intervention ? (
           <Card style={{ marginBottom: spacing.md }}>
             <Text style={[{ color: colors.text }]}>{intervention.summary}</Text>
+            {(() => {
+              const extra = intervention.detail_json as { body?: string; bullets?: string[] } | null | undefined;
+              if (!extra) return null;
+              if (extra.body) {
+                return (
+                  <Text style={[{ color: colors.textSecondary, marginTop: spacing.sm, fontSize: 14 }]}>{extra.body}</Text>
+                );
+              }
+              if (Array.isArray(extra.bullets) && extra.bullets.length > 0) {
+                return (
+                  <View style={{ marginTop: spacing.sm }}>
+                    {extra.bullets.map((b) => (
+                      <Text key={b} style={{ color: colors.textSecondary, fontSize: 14, marginBottom: 4 }}>
+                        • {b}
+                      </Text>
+                    ))}
+                  </View>
+                );
+              }
+              return null;
+            })()}
             <View style={{ flexDirection: 'row', gap: 12, marginTop: spacing.md }}>
               <Pressable
                 testID="btn-approve-intervention"

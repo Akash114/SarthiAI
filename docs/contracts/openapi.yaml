@@ -82,6 +82,8 @@ tags:
     description: Coaching nudges and reminder toggles
   - name: brain-dump
     description: Free-text reflection capture and signal extraction
+  - name: focus-sessions
+    description: Focus companion session start/end for analytics
 
 paths:
   /health:
@@ -688,7 +690,7 @@ paths:
     patch:
       tags: [tasks]
       operationId: task_patch
-      summary: Update task title or note (note stored in metadata)
+      summary: Update task fields (title, note in metadata, optional status and sort_order)
       security:
         - bearerAuth: []
       parameters:
@@ -737,6 +739,115 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/tasks/{task_id}/skip:
+    post:
+      tags: [tasks]
+      operationId: tasks_skip
+      summary: Mark a task skipped (idempotent if already skipped)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Invalid state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/focus-sessions:
+    post:
+      tags: [focus-sessions]
+      operationId: focus_session_create
+      summary: Start a focus session for a task
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FocusSessionCreateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FocusSessionResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/focus-sessions/{session_id}:
+    patch:
+      tags: [focus-sessions]
+      operationId: focus_session_patch
+      summary: End a focus session
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FocusSessionPatchRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FocusSessionResponse"
         "401":
           description: Unauthorized
           content:
@@ -1752,6 +1863,13 @@ components:
           type: string
           maxLength: 500
           description: Empty string clears the note
+        status:
+          type: string
+          enum: [open, completed, skipped]
+        sort_order:
+          type: integer
+          minimum: 0
+          maximum: 100000
 
     TaskListResponse:
       type: object
@@ -1775,12 +1893,62 @@ components:
         summary:
           type: string
           maxLength: 2000
+        detail_json:
+          type: object
+          additionalProperties: true
+          nullable: true
         created_at:
           type: string
           format: date-time
         resolved_at:
           type: string
           format: date-time
+
+    FocusSessionCreateRequest:
+      type: object
+      required: [task_id]
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        planned_seconds:
+          type: integer
+          minimum: 1
+          maximum: 86400
+          nullable: true
+
+    FocusSessionPatchRequest:
+      type: object
+      properties:
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    FocusSessionResponse:
+      type: object
+      required: [id, user_id, started_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        planned_seconds:
+          type: integer
+          nullable: true
 
     InterventionCurrentResponse:
       type: object

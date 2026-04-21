@@ -240,6 +240,8 @@ class Task(BaseModel):
 class TaskPatchRequest(BaseModel):
     title: str | None = Field(None, max_length=500)
     note: str | None = Field(None, max_length=500)
+    status: Literal["open", "completed", "skipped"] | None = None
+    sort_order: int | None = Field(None, ge=0, le=100_000)
 
 
 class TaskListResponse(BaseModel):
@@ -250,8 +252,32 @@ class Intervention(BaseModel):
     id: UUID
     status: str
     summary: str
+    detail_json: dict[str, Any] | None = None
     created_at: datetime | None = None
     resolved_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class FocusSessionCreateRequest(BaseModel):
+    task_id: UUID
+    planned_seconds: int | None = Field(None, ge=1, le=86400)
+
+
+class FocusSessionPatchRequest(BaseModel):
+    ended_at: datetime | None = Field(
+        default=None,
+        description="Session end time; if omitted the server uses current UTC time",
+    )
+
+
+class FocusSessionResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    task_id: UUID | None
+    started_at: datetime
+    ended_at: datetime | None
+    planned_seconds: int | None
 
     model_config = {"from_attributes": True}
 

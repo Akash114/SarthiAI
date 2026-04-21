@@ -1,25 +1,32 @@
+/** Aligns with `old/figma-design/src/styles/theme.css` (white-first Sarthi AI tokens). */
 export const colors = {
-  // Brand
-  indigo: '#5B4EE7',
-  indigoLight: '#EEF0FF',
-  indigoDark: '#3D35B5',
+  // Brand — primary indigo
+  indigo: '#4F46E5',
+  indigoLight: '#EEF2FF',
+  indigoDark: '#4338CA',
 
-  // Neutrals
+  // Surfaces
   white: '#FFFFFF',
-  background: '#F7F8FC',
-  card: '#EEF0FF',
-  border: '#D8D9F0',
-  text: '#1A1D3A',
-  textSecondary: '#6B6F8C',
-  textMuted: '#A0A5C4',
+  background: '#F8F9FA',
+  surface: '#FFFFFF',
+  surfaceMuted: '#F8F9FA',
+  /** Legacy: cards are white on muted canvas */
+  card: '#FFFFFF',
+  border: '#E5E5E5',
+  borderMuted: '#F5F5F5',
+
+  // Text
+  text: '#1A1A1A',
+  textSecondary: '#525252',
+  textMuted: '#A3A3A3',
 
   // Semantic
-  success: '#22C55E',
-  successLight: '#DCFCE7',
+  success: '#10B981',
+  successLight: '#ECFDF5',
   warning: '#F59E0B',
-  warningLight: '#FEF3C7',
+  warningLight: '#FFFBEB',
   error: '#EF4444',
-  errorLight: '#FEE2E2',
+  errorLight: '#FEF2F2',
 
   // Category chips
   chipWork: '#DBEAFE',
@@ -41,7 +48,7 @@ export const spacing = {
 } as const;
 
 export const radii = {
-  sm: 6,
+  sm: 8,
   md: 12,
   lg: 16,
   xl: 24,

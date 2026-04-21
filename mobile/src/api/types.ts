@@ -100,6 +100,8 @@ export interface Task {
 export interface TaskPatchRequest {
   title?: string;
   note?: string;
+  status?: TaskStatus;
+  sort_order?: number;
 }
 
 export interface TaskListResponse {
@@ -112,8 +114,27 @@ export interface Intervention {
   id: string;
   status: InterventionStatus;
   summary: string;
+  detail_json?: Record<string, unknown> | null;
   created_at?: string;
   resolved_at?: string;
+}
+
+export interface FocusSessionCreateRequest {
+  task_id: string;
+  planned_seconds?: number | null;
+}
+
+export interface FocusSessionPatchRequest {
+  ended_at?: string | null;
+}
+
+export interface FocusSessionResponse {
+  id: string;
+  user_id: string;
+  task_id: string | null;
+  started_at: string;
+  ended_at?: string | null;
+  planned_seconds?: number | null;
 }
 
 export interface InterventionCurrentResponse {

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -15,5 +15,6 @@ class Intervention(Base):
     resolution_id: Mapped[UUID | None] = mapped_column(ForeignKey("resolutions.id", ondelete="SET NULL"), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="pending")
     summary: Mapped[str] = mapped_column(Text)
+    detail_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

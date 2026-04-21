@@ -15,6 +15,7 @@ app/api/v1/brain_dump_routes.py
 app/api/v1/core_routes.py
 app/api/v1/dashboard_routes.py
 app/api/v1/deps.py
+app/api/v1/focus_sessions_routes.py
 app/api/v1/notification_config.py
 app/api/v1/ops_routes.py
 app/api/v1/planning_routes.py
@@ -25,6 +26,7 @@ app/jobs/week1.py
 app/models/__init__.py
 app/models/brain_dump.py
 app/models/device_push.py
+app/models/focus_session.py
 app/models/idempotency.py
 app/models/intervention.py
 app/models/onboarding.py

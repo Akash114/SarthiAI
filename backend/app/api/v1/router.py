@@ -5,6 +5,7 @@ from app.api.v1 import (
     brain_dump_routes,
     core_routes,
     dashboard_routes,
+    focus_sessions_routes,
     notification_config,
     ops_routes,
     planning_routes,
@@ -19,6 +20,7 @@ v1_router.include_router(preferences_routes.router)
 v1_router.include_router(brain_dump_routes.router)
 v1_router.include_router(notification_config.router)
 v1_router.include_router(core_routes.router)
+v1_router.include_router(focus_sessions_routes.router)
 v1_router.include_router(planning_routes.router)
 v1_router.include_router(dashboard_routes.router)
 v1_router.include_router(ops_routes.router)
