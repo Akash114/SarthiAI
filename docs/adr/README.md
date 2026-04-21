@@ -14,3 +14,4 @@ Index of baseline architecture and stack decisions. Each ADR follows the program
 | [0008](0008-opentelemetry-structured-logs.md) | OTel + structured logs (bootstrap) |
 | [0009](0009-mobile-expo-eas.md) | Mobile delivery: Expo + EAS |
 | [0010](0010-database-migrations-alembic.md) | Database migrations: Alembic |
+| [0011](0011-coaching-preferences-work-hours.md) | Coaching preferences: work-hours, personal-slots, planner metadata |

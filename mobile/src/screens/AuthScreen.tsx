@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import {
   ActivityIndicator,
@@ -24,14 +24,13 @@ type Form = z.infer<typeof schema>;
 
 export function AuthScreen({ onAuthed }: { onAuthed?: () => void }) {
   const [err, setErr] = useState<string | null>(null);
-  const defaultEmail = useMemo(() => `u${Date.now()}@test.dev`, []);
   const {
     control,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<Form>({
     resolver: zodResolver(schema),
-    defaultValues: { email: defaultEmail, password: 'password123' },
+    defaultValues: { email: '', password: '' },
   });
 
   const applyTokens = async (tokens: AuthTokenResponse) => {

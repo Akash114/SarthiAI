@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -21,6 +21,10 @@ class UserCoachingPreferences(Base):
     task_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     interventions_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    work_hours_start: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    work_hours_end: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    work_days: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    personal_slots: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

@@ -128,6 +128,8 @@ def _run(db: Session, resolution_id: UUID) -> UUID | None:
     res.updated_at = now
 
     for i, title in enumerate(plan.task_titles):
+        # Determine time_of_day from position in the list (morning tasks first, etc.)
+        time_of_day = ("morning" if i < 2 else "afternoon" if i < 4 else "evening")
         db.add(
             Task(
                 resolution_id=res.id,
@@ -136,6 +138,11 @@ def _run(db: Session, resolution_id: UUID) -> UUID | None:
                 sort_order=i,
                 due_window_starts_at=now,
                 due_window_ends_at=week_end,
+                metadata_json={
+                    "duration_minutes": 10,
+                    "time_of_day": time_of_day,
+                    "category": "personal",
+                },
             )
         )
 

@@ -57,6 +57,14 @@ def preferences_patch(
         p.interventions_enabled = body.interventions_enabled
     if body.timezone is not None:
         p.timezone = body.timezone or None
+    if body.work_hours_start is not None:
+        p.work_hours_start = body.work_hours_start or None
+    if body.work_hours_end is not None:
+        p.work_hours_end = body.work_hours_end or None
+    if body.work_days is not None:
+        p.work_days = body.work_days or None
+    if body.personal_slots is not None:
+        p.personal_slots = body.personal_slots or None
     p.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(p)

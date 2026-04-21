@@ -74,6 +74,17 @@ class CoachingPreferencesState(BaseModel):
     interventions_enabled: bool
     timezone: str | None = None
     updated_at: datetime | None = None
+    # additive v1+: work-hours / personal-slots
+    work_hours_start: str | None = Field(None, description="HH:MM local time when work begins, e.g. 09:00")
+    work_hours_end: str | None = Field(None, description="HH:MM local time when work ends, e.g. 17:00")
+    work_days: list[int] | None = Field(
+        None,
+        description="ISO weekday numbers (1=Monday … 7=Sunday) the user works, e.g. [1,2,3,4,5]",
+    )
+    personal_slots: dict[str, str] | None = Field(
+        None,
+        description="Free-form map of personal activity category to time-of-day slot: morning | afternoon | evening",
+    )
 
     model_config = {"from_attributes": True}
 
@@ -83,6 +94,11 @@ class CoachingPreferencesPatchRequest(BaseModel):
     task_reminders_enabled: bool | None = None
     interventions_enabled: bool | None = None
     timezone: str | None = Field(None, max_length=64)
+    # additive v1+
+    work_hours_start: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
+    work_hours_end: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
+    work_days: list[int] | None = Field(None, description="ISO weekday numbers 1-7")
+    personal_slots: dict[str, str] | None = Field(None)
 
 
 class BrainDumpRequest(BaseModel):

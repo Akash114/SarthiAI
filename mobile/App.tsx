@@ -1,6 +1,6 @@
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import { useEffect } from 'react';
@@ -8,20 +8,20 @@ import { StatusBar } from 'expo-status-bar';
 
 import { SENTRY_DSN, SENTRY_ENVIRONMENT } from './src/config';
 import { initAnalytics } from './src/lib/analytics';
-import { AuthScreen } from './src/screens/AuthScreen';
-import { SliceScreen } from './src/screens/SliceScreen';
-import { useSessionStore } from './src/state/sessionStore';
+import { RootNavigator } from './src/navigation/RootNavigator';
+import { ThemeProvider } from './src/theme';
 
-const Stack = createNativeStackNavigator();
-const queryClient = new QueryClient();
-
-function AuthScreenGate() {
-  return <AuthScreen />;
-}
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+      refetchOnWindowFocus: true,
+    },
+  },
+});
 
 export default function App() {
-  const accessToken = useSessionStore((s) => s.accessToken);
-
   useEffect(() => {
     if (SENTRY_DSN) {
       const version = Constants.expoConfig?.version ?? '0.0.0';
@@ -53,16 +53,14 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <NavigationContainer>
-        <StatusBar style="dark" />
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          {accessToken ? (
-            <Stack.Screen name="Slice" component={SliceScreen} />
-          ) : (
-            <Stack.Screen name="Auth" component={AuthScreenGate} />
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <NavigationContainer>
+            <StatusBar style="dark" />
+            <RootNavigator />
+          </NavigationContainer>
+        </ThemeProvider>
+      </SafeAreaProvider>
     </QueryClientProvider>
   );
 }
