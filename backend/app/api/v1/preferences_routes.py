@@ -39,7 +39,7 @@ def preferences_patch(
     posthog=Depends(get_posthog),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> CoachingPreferencesState | Response:
-    rid = _rid(request)
+    _ = _rid(request)
     replay = replay_if_exists(
         db,
         user_id=user_id,
@@ -65,6 +65,8 @@ def preferences_patch(
         p.work_days = body.work_days or None
     if body.personal_slots is not None:
         p.personal_slots = body.personal_slots or None
+    if body.home_segment_index is not None:
+        p.home_segment_index = body.home_segment_index
     p.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(p)

@@ -14,18 +14,11 @@ export type OnboardingStackParamList = {
   PlanActivated: { resolutionId: string };
 };
 
-// Main tab stack
-export type MainTabParamList = {
-  HomeTab: undefined;
-  PlanTab: NavigatorScreenParams<PlanStackParamList>;
-  InterventionsTab: NavigatorScreenParams<InterventionsStackParamList>;
-  SettingsTab: undefined;
-};
-
 // Home stack (within HomeTab)
 export type HomeStackParamList = {
   Home: undefined;
   FocusMode: { taskId: string; taskTitle: string; durationMinutes?: number };
+  FocusHistory: undefined;
   BrainDumpModal: { isOnboarding?: boolean };
 };
 
@@ -35,6 +28,8 @@ export type PlanStackParamList = {
   WeeklyPlan: { resolutionId: string };
   PlanReview: { resolutionId: string; isOnboarding?: boolean };
   PlanHistory: { resolutionId: string };
+  PlanSnapshotDetail: { snapshotId: string };
+  TaskDetail: { taskId: string };
 };
 
 // Interventions stack
@@ -42,12 +37,24 @@ export type InterventionsStackParamList = {
   Interventions: undefined;
   InterventionsHistory: undefined;
   TransparencyLog: undefined;
+  TransparencyEntry: { entryId: string };
 };
 
 // Settings stack
 export type SettingsStackParamList = {
   Settings: undefined;
   PersonalizeSettings: undefined;
+  BrainDumpHistory: undefined;
+  BrainDumpDetail: { dumpId: string };
+  FocusHistory: undefined;
+};
+
+// Main tab stack
+export type MainTabParamList = {
+  HomeTab: undefined;
+  PlanTab: NavigatorScreenParams<PlanStackParamList>;
+  InterventionsTab: NavigatorScreenParams<InterventionsStackParamList>;
+  SettingsTab: NavigatorScreenParams<SettingsStackParamList>;
 };
 
 // Root

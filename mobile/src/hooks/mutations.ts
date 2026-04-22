@@ -5,12 +5,14 @@ import type {
   OnboardingPatchRequest,
   BrainDumpRequest,
   BrainDumpResponse,
+  Resolution,
   ResolutionCreateRequest,
   TaskCreateRequest,
   ResolutionPatchRequest,
   TaskPatchRequest,
   FocusSessionCreateRequest,
   FocusSessionResponse,
+  GenerateWeek1Response,
 } from '../api/types';
 import type { Intervention } from '../api/types';
 
@@ -53,7 +55,10 @@ export function usePostBrainDump() {
         json,
         headers: { 'Idempotency-Key': idempotencyKey('/v1/brain-dump') },
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['resolution', 'current'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['resolution', 'current'] });
+      qc.invalidateQueries({ queryKey: ['brain-dumps'] });
+    },
   });
 }
 
@@ -61,7 +66,7 @@ export function useCreateResolution() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (json: ResolutionCreateRequest) =>
-      apiJson<{ id: string }>('/v1/resolutions', {
+      apiJson<Resolution>('/v1/resolutions', {
         method: 'POST',
         json,
         headers: { 'Idempotency-Key': idempotencyKey('/v1/resolutions') },
@@ -112,13 +117,14 @@ export function useGenerateWeek1(resolutionId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiJson(`/v1/resolutions/${resolutionId}/generate-week-1`, {
+      apiJson<GenerateWeek1Response>(`/v1/resolutions/${resolutionId}/generate-week-1`, {
         method: 'POST',
         headers: { 'Idempotency-Key': idempotencyKey(`/v1/resolutions/${resolutionId}/generate-week-1`) },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['resolution', resolutionId] });
       qc.invalidateQueries({ queryKey: ['resolution', 'current'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
@@ -237,11 +243,29 @@ export function useDismissIntervention(interventionId: string) {
 
 export function useRegisterPushToken() {
   return useMutation({
-    mutationFn: (json: { expo_push_token: string; platform: 'android' | 'ios' }) =>
+    mutationFn: (json: { expo_push_token: string; platform: 'android' | 'ios'; device_id?: string }) =>
       apiJson('/v1/devices/push-token', {
         method: 'POST',
         json,
         headers: { 'Idempotency-Key': idempotencyKey('/v1/devices/push-token') },
       }),
+  });
+}
+
+export function useMergeAnonymous() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (anonymous_user_id: string) =>
+      apiJson<{ merged: boolean; message: string }>('/v1/auth/merge-anonymous', {
+        method: 'POST',
+        json: { anonymous_user_id },
+        headers: { 'Idempotency-Key': idempotencyKey('/v1/auth/merge-anonymous') },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['me'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['resolution'] });
+      qc.invalidateQueries({ queryKey: ['preferences'] });
+    },
   });
 }

@@ -42,7 +42,7 @@ export function WeeklyPlanScreen({ navigation, route }: PlanStackScreenProps<'We
               >
                 {task.status === 'completed' ? <Text style={{ color: colors.white, fontSize: 12, fontWeight: '700' }}>✓</Text> : null}
               </Pressable>
-              <View style={{ flex: 1 }}>
+              <Pressable style={{ flex: 1 }} onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}>
                 <Text style={[{ color: colors.text, textDecorationLine: task.status === 'skipped' ? 'line-through' : 'none' }]}>{task.title}</Text>
                 {task.metadata_json && (
                   <Text style={[{ color: colors.textMuted, fontSize: 12 }]}>
@@ -50,7 +50,12 @@ export function WeeklyPlanScreen({ navigation, route }: PlanStackScreenProps<'We
                     {String((task.metadata_json as { time_of_day?: string }).time_of_day ?? 'morning')}
                   </Text>
                 )}
-              </View>
+                {task.due_window_ends_at ? (
+                  <Text style={[{ color: colors.textMuted, fontSize: 11, marginTop: 4 }]}>
+                    Due by {new Date(task.due_window_ends_at).toLocaleDateString()}
+                  </Text>
+                ) : null}
+              </Pressable>
               {task.status === 'open' && (
                 <Pressable
                   onPress={() =>

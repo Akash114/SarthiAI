@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useTheme } from '../theme';
 import { Screen, AppHeader, Card, Chip, Button, Modal } from '../components';
 import { apiJson } from '../api/client';
@@ -8,9 +7,6 @@ import { useResolution, useWeek1Tasks } from '../hooks/queries';
 import { useGenerateWeek1, usePreviewWeek1, usePatchResolution } from '../hooks/mutations';
 import type { OnboardingScreenProps, PlanStackScreenProps } from '../navigation/types';
 import type { Task } from '../api/types';
-
-// Re-export as both onboarding and plan stack props share the same shape
-export type { OnboardingScreenProps as PlanReviewScreenProps } from '../navigation/types';
 
 const WEEK_LABELS = ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8', 'W9', 'W10', 'W11', 'W12'];
 
@@ -31,7 +27,9 @@ function waitForPlanReady(rid: string, maxAttempts = 24, delayMs = 1000) {
   });
 }
 
-export function PlanReviewScreen({ navigation, route }: OnboardingScreenProps<'PlanReview'>) {
+export type PlanReviewScreenProps = OnboardingScreenProps<'PlanReview'> | PlanStackScreenProps<'PlanReview'>;
+
+export function PlanReviewScreen({ navigation, route }: PlanReviewScreenProps) {
   const { colors, spacing } = useTheme();
   const isOnboarding = route.params?.isOnboarding ?? false;
   const resolutionId = (route.params as { resolutionId?: string })?.resolutionId ?? '';
@@ -43,11 +41,13 @@ export function PlanReviewScreen({ navigation, route }: OnboardingScreenProps<'P
   const patchMutation = usePatchResolution(resolutionId);
 
   const [showActivated, setShowActivated] = useState(false);
+  const [lastEnqueuedJobId, setLastEnqueuedJobId] = useState<string | null>(null);
 
   const handleStart = async () => {
     if (!resolutionId) return;
     if (resolution?.week_1_plan_status !== 'ready') {
-      await generateMutation.mutateAsync();
+      const gen = await generateMutation.mutateAsync();
+      if (gen.job_id) setLastEnqueuedJobId(gen.job_id);
       const ready = await waitForPlanReady(resolutionId);
       if (!ready) {
         Alert.alert('Plan still generating', 'Please wait and try again.');
@@ -81,6 +81,24 @@ export function PlanReviewScreen({ navigation, route }: OnboardingScreenProps<'P
             {resolution?.title ?? 'Loading…'}
           </Text>
         </View>
+
+        {resolution?.week_1_plan_status === 'failed' && resolution.plan_metadata_json ? (
+          <Card style={{ marginBottom: spacing.md, borderColor: colors.warning, borderWidth: 1 }}>
+            <Text style={[{ color: colors.warning, fontWeight: '600' }]}>Planner did not finish</Text>
+            <Text style={[{ color: colors.textMuted, fontSize: 11, marginTop: spacing.xs }]}>
+              {JSON.stringify(resolution.plan_metadata_json)}
+            </Text>
+          </Card>
+        ) : null}
+
+        {lastEnqueuedJobId && resolution?.week_1_plan_status === 'pending' ? (
+          <Card style={{ marginBottom: spacing.md }}>
+            <Text style={[{ color: colors.textSecondary, fontSize: 12 }]}>Background job</Text>
+            <Text style={[{ color: colors.textMuted, fontSize: 11, marginTop: 4 }]} selectable>
+              {lastEnqueuedJobId}
+            </Text>
+          </Card>
+        ) : null}
 
         {/* 12-week chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.lg }}>

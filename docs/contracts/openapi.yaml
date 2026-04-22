@@ -462,6 +462,75 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /v1/brain-dumps:
+    get:
+      tags: [brain-dump]
+      operationId: brain_dump_list
+      summary: List brain dumps for the current user (newest first)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrainDumpListPage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/brain-dumps/{dump_id}:
+    get:
+      tags: [brain-dump]
+      operationId: brain_dump_get
+      summary: Get a single brain dump with full body and signals
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dump_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrainDumpDetailResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /v1/resolutions/current:
     get:
       tags: [resolutions]
@@ -789,6 +858,34 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /v1/focus-sessions:
+    get:
+      tags: [focus-sessions]
+      operationId: focus_session_list
+      summary: List recent focus sessions for the current user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FocusSessionListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [focus-sessions]
       operationId: focus_session_create
@@ -1532,6 +1629,12 @@ components:
         updated_at:
           type: string
           format: date-time
+        home_segment_index:
+          type: integer
+          minimum: 0
+          maximum: 1
+          default: 0
+          description: Home segmented control — 0 Personal, 1 Work
 
     CoachingPreferencesPatchRequest:
       type: object
@@ -1545,6 +1648,10 @@ components:
         timezone:
           type: string
           maxLength: 64
+        home_segment_index:
+          type: integer
+          minimum: 0
+          maximum: 1
 
     BrainDumpRequest:
       type: object
@@ -1567,6 +1674,51 @@ components:
         signals:
           type: object
           additionalProperties: true
+
+    BrainDumpListItem:
+      type: object
+      required: [id, created_at, excerpt, actionable]
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        excerpt:
+          type: string
+        actionable:
+          type: boolean
+
+    BrainDumpListPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrainDumpListItem"
+        next_cursor:
+          type: string
+          nullable: true
+
+    BrainDumpDetailResponse:
+      type: object
+      required: [id, body, actionable, signals, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        body:
+          type: string
+        actionable:
+          type: boolean
+        signals:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
 
     Resolution:
       type: object
@@ -1729,6 +1881,9 @@ components:
           type: integer
         completed_tasks:
           type: integer
+        skipped_tasks:
+          type: integer
+          description: Count of skipped tasks for the active resolution (additive field; default 0 when absent)
 
     DashboardResponse:
       type: object
@@ -1949,6 +2104,15 @@ components:
         planned_seconds:
           type: integer
           nullable: true
+
+    FocusSessionListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FocusSessionResponse"
 
     InterventionCurrentResponse:
       type: object

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
 import { useTheme } from '../theme';
 import { Screen, AppHeader, Card } from '../components';
-import { usePlanHistory, usePlanSnapshot } from '../hooks/queries';
+import { usePlanHistory } from '../hooks/queries';
 import type { PlanStackScreenProps } from '../navigation/types';
 
 export function PlanHistoryScreen({ navigation, route }: PlanStackScreenProps<'PlanHistory'>) {
@@ -18,14 +18,16 @@ export function PlanHistoryScreen({ navigation, route }: PlanStackScreenProps<'P
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: spacing.lg }}
         renderItem={({ item }) => (
-          <Card style={{ marginBottom: spacing.sm }}>
-            <Text style={[{ color: colors.text }]}>
-              {item.kind} · v{item.planner_version}
-            </Text>
-            <Text style={[{ color: colors.textMuted, fontSize: 12, marginTop: 4 }]}>
-              {new Date(item.created_at).toLocaleDateString()}
-            </Text>
-          </Card>
+          <Pressable onPress={() => navigation.navigate('PlanSnapshotDetail', { snapshotId: item.id })}>
+            <Card style={{ marginBottom: spacing.sm }}>
+              <Text style={[{ color: colors.text }]}>
+                {item.kind} · v{item.planner_version}
+              </Text>
+              <Text style={[{ color: colors.textMuted, fontSize: 12, marginTop: 4 }]}>
+                {new Date(item.created_at).toLocaleDateString()}
+              </Text>
+            </Card>
+          </Pressable>
         )}
         ListEmptyComponent={
           <Text style={[{ color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl }]}>

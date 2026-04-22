@@ -5,6 +5,8 @@ import { DashboardScreen } from '../../screens/DashboardScreen';
 import { WeeklyPlanScreen } from '../../screens/WeeklyPlanScreen';
 import { PlanReviewScreen } from '../../screens/PlanReviewScreen';
 import { PlanHistoryScreen } from '../../screens/PlanHistoryScreen';
+import { PlanSnapshotDetailScreen } from '../../screens/PlanSnapshotDetailScreen';
+import { TaskDetailScreen } from '../../screens/TaskDetailScreen';
 
 const Stack = createNativeStackNavigator<PlanStackParamList>();
 
@@ -15,6 +17,8 @@ export function PlanStackNavigator() {
       <Stack.Screen name="WeeklyPlan" component={WeeklyPlanScreen} />
       <Stack.Screen name="PlanReview" component={PlanReviewScreen} />
       <Stack.Screen name="PlanHistory" component={PlanHistoryScreen} />
+      <Stack.Screen name="PlanSnapshotDetail" component={PlanSnapshotDetailScreen} />
+      <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
     </Stack.Navigator>
   );
 }

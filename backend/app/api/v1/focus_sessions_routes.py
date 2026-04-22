@@ -7,6 +7,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.exceptions import ApiError
@@ -14,7 +15,12 @@ from app.api.v1.deps import _rid, current_user_id, get_db
 from app.models.focus_session import FocusSession as FocusSessionORM
 from app.models.resolution import Resolution as ResolutionORM
 from app.models.task import Task as TaskORM
-from app.schemas.api import FocusSessionCreateRequest, FocusSessionPatchRequest, FocusSessionResponse
+from app.schemas.api import (
+    FocusSessionCreateRequest,
+    FocusSessionListResponse,
+    FocusSessionPatchRequest,
+    FocusSessionResponse,
+)
 
 router = APIRouter(tags=["focus-sessions"])
 
@@ -27,6 +33,25 @@ def _task_owned(db: Session, task_id: UUID, user_id: UUID, rid: str) -> TaskORM:
     if r is None or r.user_id != user_id:
         raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
     return t
+
+
+@router.get("/focus-sessions", response_model=FocusSessionListResponse)
+def focus_session_list(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+    limit: int = 30,
+) -> FocusSessionListResponse:
+    rid = _rid(request)
+    if limit < 1 or limit > 100:
+        raise ApiError(400, code="validation", message="limit must be 1-100", request_id=rid)
+    rows = db.scalars(
+        select(FocusSessionORM)
+        .where(FocusSessionORM.user_id == user_id)
+        .order_by(FocusSessionORM.started_at.desc())
+        .limit(limit)
+    ).all()
+    return FocusSessionListResponse(items=[FocusSessionResponse.model_validate(x) for x in rows])
 
 
 @router.post("/focus-sessions", response_model=FocusSessionResponse)

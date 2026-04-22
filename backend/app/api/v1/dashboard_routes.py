@@ -54,6 +54,11 @@ def dashboard(
         .select_from(TaskORM)
         .where(TaskORM.resolution_id == r.id, TaskORM.status == "completed")
     ) or 0
+    skipped_n = db.scalar(
+        select(func.count())
+        .select_from(TaskORM)
+        .where(TaskORM.resolution_id == r.id, TaskORM.status == "skipped")
+    ) or 0
     pending_iv = db.scalar(
         select(func.count())
         .select_from(InterventionORM)
@@ -66,6 +71,7 @@ def dashboard(
             week_1_plan_status=r.week_1_plan_status,
             open_tasks=int(open_n),
             completed_tasks=int(done_n),
+            skipped_tasks=int(skipped_n),
         ),
         pending_intervention=pending_iv > 0,
     )

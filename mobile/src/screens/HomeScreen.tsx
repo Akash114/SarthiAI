@@ -2,14 +2,12 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { useTheme } from '../theme';
 import { Screen, Card, SegmentedToggle, ProgressRing, Button, Modal } from '../components';
-import { useDashboard, useJourneyDaily, useMe } from '../hooks/queries';
-import { useUIStore } from '../state/uiStore';
-import { useCreateResolution, useCreateTask } from '../hooks/mutations';
+import { useDashboard, useJourneyDaily, useMe, usePreferences } from '../hooks/queries';
+import { useCreateResolution, useCreateTask, usePatchPreferences } from '../hooks/mutations';
 import type { HomeStackScreenProps } from '../navigation/types';
 
 export function HomeScreen({ navigation }: HomeStackScreenProps<'Home'>) {
   const { colors, spacing, typography } = useTheme();
-  const { personalWorkIndex, setPersonalWorkIndex } = useUIStore();
   const [fabOpen, setFabOpen] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
@@ -21,11 +19,18 @@ export function HomeScreen({ navigation }: HomeStackScreenProps<'Home'>) {
   const { data: dashboard } = useDashboard();
   const { data: me } = useMe();
   const { data: journey } = useJourneyDaily();
+  const { data: prefs } = usePreferences();
+  const patchPrefs = usePatchPreferences();
 
-  const totalTasks = (dashboard?.resolution?.open_tasks ?? 0) + (dashboard?.resolution?.completed_tasks ?? 0);
+  const skippedTasks = dashboard?.resolution?.skipped_tasks ?? 0;
+  const totalTasks =
+    (dashboard?.resolution?.open_tasks ?? 0) +
+    (dashboard?.resolution?.completed_tasks ?? 0) +
+    skippedTasks;
   const completedTasks = dashboard?.resolution?.completed_tasks ?? 0;
   const progress = totalTasks > 0 ? completedTasks / totalTasks : 0;
   const openCount = dashboard?.resolution?.open_tasks ?? 0;
+  const homeSegment = prefs?.home_segment_index ?? 0;
 
   const openTasks = journey?.tasks?.filter((t) => t.status === 'open') ?? [];
   const nextTask = openTasks[0];
@@ -80,7 +85,11 @@ export function HomeScreen({ navigation }: HomeStackScreenProps<'Home'>) {
           <Text style={[{ color: colors.textMuted, marginTop: spacing.xs, fontSize: 13 }]}>We shaped today so you can stay present.</Text>
         </View>
 
-        <SegmentedToggle options={['Personal', 'Work']} selected={personalWorkIndex} onChange={setPersonalWorkIndex} />
+        <SegmentedToggle
+          options={['Personal', 'Work']}
+          selected={homeSegment}
+          onChange={(i) => patchPrefs.mutate({ home_segment_index: i })}
+        />
 
         <View style={[styles.statsRow, { marginTop: spacing.lg, gap: spacing.sm }]}>
           <Card style={styles.statCard}>
@@ -91,10 +100,10 @@ export function HomeScreen({ navigation }: HomeStackScreenProps<'Home'>) {
             <Text style={[styles.statNum, { color: colors.success }]}>{completedTasks}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Completed</Text>
           </Card>
-          <Card style={styles.statCard}>
-            <Text style={[styles.statNum, { color: colors.warning }]}>—</Text>
+          <Pressable style={styles.statCard} onPress={() => navigation.navigate('FocusHistory')}>
+            <Text style={[styles.statNum, { color: colors.warning }]}>→</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Focus</Text>
-          </Card>
+          </Pressable>
         </View>
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: spacing.lg }]}>Quick actions</Text>
@@ -128,11 +137,11 @@ export function HomeScreen({ navigation }: HomeStackScreenProps<'Home'>) {
               {completedTasks} of {totalTasks || '—'}
             </Text>
           </View>
-          <View style={styles.momentumCol}>
+          <Pressable style={styles.momentumCol} onPress={() => navigation.navigate('FocusHistory')}>
             <ProgressRing progress={0} size={100} />
             <Text style={{ color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center' }}>Focus time</Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12, textAlign: 'center' }}>Syncs with sessions</Text>
-          </View>
+            <Text style={{ color: colors.textMuted, fontSize: 12, textAlign: 'center' }}>Tap for history</Text>
+          </Pressable>
         </View>
 
         {nextTask && (
@@ -140,8 +149,13 @@ export function HomeScreen({ navigation }: HomeStackScreenProps<'Home'>) {
             <Text style={{ fontSize: 11, color: colors.textMuted, letterSpacing: 1 }}>UP NEXT</Text>
             <Text style={[typography.title, { color: colors.text, marginTop: 4 }]}>{nextTask.title}</Text>
             <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 4 }}>
-              {personalWorkIndex === 0 ? 'Personal' : 'Work'}
+              {homeSegment === 0 ? 'Personal' : 'Work'}
             </Text>
+            {nextTask.due_window_ends_at ? (
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+                Due by {new Date(nextTask.due_window_ends_at).toLocaleString()}
+              </Text>
+            ) : null}
             <Button
               title="Enter Focus Mode"
               variant="primary"

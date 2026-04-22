@@ -23,7 +23,7 @@ import {
   captureTaskCompleted,
   captureWeek1PlanRequested,
 } from '../lib/analytics';
-import { notifyInterventionPending, registerPushTokenWithBackend } from '../lib/notifications';
+import { notifyInterventionPending, registerPushTokenWithBackend, unregisterPushTokenFromBackend } from '../lib/notifications';
 
 type Step =
   | 'onboarding'
@@ -177,6 +177,7 @@ export function SliceScreen() {
   }, []);
 
   const onLogout = useCallback(async () => {
+    await unregisterPushTokenFromBackend();
     try {
       const refresh = await useSessionStore.getState().readRefreshToken();
       if (refresh) {

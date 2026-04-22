@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiJson, type AuthTokenResponse } from '../api/client';
 import type {
   User,
@@ -10,10 +10,15 @@ import type {
   DashboardResponse,
   DailyJourneyResponse,
   TransparencyLogPage,
+  TransparencyEntry,
   BrainDumpResponse,
   PlanHistoryResponse,
   PlanSnapshotDetail,
   Week1PreviewResponse,
+  NotificationsConfigResponse,
+  BrainDumpListPage,
+  BrainDumpDetailResponse,
+  FocusSessionListResponse,
 } from '../api/types';
 
 // Auth
@@ -106,6 +111,79 @@ export function useTransparencyLog(params?: { cursor?: string; limit?: number; a
     queryKey: ['transparency-log', params],
     queryFn: () =>
       apiJson<TransparencyLogPage>(`/v1/transparency-log${qs ? `?${qs}` : ''}`),
+  });
+}
+
+export function useTransparencyLogInfinite(params?: { limit?: number; action_type?: string | null }) {
+  const limit = params?.limit ?? 50;
+  const actionType = params?.action_type ?? undefined;
+  return useInfiniteQuery({
+    queryKey: ['transparency-log', 'infinite', limit, actionType],
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
+      const searchParams = new URLSearchParams();
+      if (pageParam) searchParams.set('cursor', pageParam);
+      searchParams.set('limit', String(limit));
+      if (actionType) searchParams.set('action_type', actionType);
+      const qs = searchParams.toString();
+      return apiJson<TransparencyLogPage>(`/v1/transparency-log?${qs}`);
+    },
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  });
+}
+
+export function useTransparencyEntry(entryId: string) {
+  return useQuery<TransparencyEntry>({
+    queryKey: ['transparency-entry', entryId],
+    queryFn: () => apiJson<TransparencyEntry>(`/v1/transparency-log/${entryId}`),
+    enabled: !!entryId,
+  });
+}
+
+export function useNotificationsConfig() {
+  return useQuery<NotificationsConfigResponse>({
+    queryKey: ['notifications-config'],
+    queryFn: () => apiJson<NotificationsConfigResponse>('/v1/notifications/config'),
+  });
+}
+
+export function useTask(taskId: string) {
+  return useQuery<Task>({
+    queryKey: ['task', taskId],
+    queryFn: () => apiJson<Task>(`/v1/tasks/${taskId}`),
+    enabled: !!taskId,
+  });
+}
+
+export function useBrainDumpsInfinite(limit = 20) {
+  return useInfiniteQuery({
+    queryKey: ['brain-dumps', 'infinite', limit],
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
+      const sp = new URLSearchParams();
+      if (pageParam) sp.set('cursor', pageParam);
+      sp.set('limit', String(limit));
+      return apiJson<BrainDumpListPage>(`/v1/brain-dumps?${sp.toString()}`);
+    },
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  });
+}
+
+export function useBrainDumpDetail(dumpId: string) {
+  return useQuery<BrainDumpDetailResponse>({
+    queryKey: ['brain-dump', dumpId],
+    queryFn: () => apiJson<BrainDumpDetailResponse>(`/v1/brain-dumps/${dumpId}`),
+    enabled: !!dumpId,
+  });
+}
+
+export function useFocusSessions(limit = 40) {
+  return useQuery<FocusSessionListResponse>({
+    queryKey: ['focus-sessions', limit],
+    queryFn: () => {
+      const sp = new URLSearchParams({ limit: String(limit) });
+      return apiJson<FocusSessionListResponse>(`/v1/focus-sessions?${sp.toString()}`);
+    },
   });
 }
 

@@ -1,7 +1,10 @@
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 
-import { API_BASE_URL } from '../config';
+import { apiJson } from '../api/client';
 import { capturePushTokenRegistered } from './analytics';
+import { getClientDeviceId } from './deviceId';
+import { getLastRegisteredPushToken, setLastRegisteredPushToken } from './pushTokenStorage';
 import { useSessionStore } from '../state/sessionStore';
 
 Notifications.setNotificationHandler({
@@ -13,6 +16,10 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 });
+
+export function pushPlatform(): 'android' | 'ios' {
+  return Platform.OS === 'ios' ? 'ios' : 'android';
+}
 
 export async function ensureNotificationPermission(): Promise<boolean> {
   const { status: existing } = await Notifications.getPermissionsAsync();
@@ -37,16 +44,36 @@ export async function notifyInterventionPending(): Promise<void> {
 export async function registerPushTokenWithBackend(expoToken: string): Promise<void> {
   const token = useSessionStore.getState().accessToken;
   if (!token) return;
-  const res = await fetch(`${API_BASE_URL}/v1/devices/push-token`, {
+  const platform = pushPlatform();
+  await apiJson('/v1/devices/push-token', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Idempotency-Key': `push-${Date.now()}`,
+    json: {
+      expo_push_token: expoToken,
+      platform,
+      device_id: getClientDeviceId(),
     },
-    body: JSON.stringify({ expo_push_token: expoToken, platform: 'android' }),
+    headers: { 'Idempotency-Key': `push-${Date.now()}` },
   });
-  if (res.ok) {
-    capturePushTokenRegistered('android');
+  await setLastRegisteredPushToken(expoToken);
+  capturePushTokenRegistered(platform);
+}
+
+/** Best-effort: remove push row server-side (e.g. logout). */
+export async function unregisterPushTokenFromBackend(): Promise<void> {
+  const expoToken = await getLastRegisteredPushToken();
+  const accessToken = useSessionStore.getState().accessToken;
+  if (!expoToken || !accessToken) return;
+  try {
+    await apiJson('/v1/devices/push-token', {
+      method: 'DELETE',
+      json: {
+        expo_push_token: expoToken,
+        platform: pushPlatform(),
+        device_id: getClientDeviceId(),
+      },
+    });
+  } catch {
+    /* ignore */
   }
+  await setLastRegisteredPushToken(null);
 }

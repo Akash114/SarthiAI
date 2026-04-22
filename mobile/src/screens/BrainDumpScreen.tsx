@@ -1,15 +1,22 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Alert } from 'react-native';
 import { useMutation } from '@tanstack/react-query';
 import { useTheme } from '../theme';
 import { Screen, AppHeader, Button } from '../components';
 import { apiJson } from '../api/client';
 import type { BrainDumpRequest, BrainDumpResponse } from '../api/types';
 
-export function BrainDumpScreen({ navigation, route }: {
-  navigation: { navigate: (screen: string, params?: object) => void; goBack: () => void };
-  route?: { params?: { isOnboarding?: boolean } };
-}) {
+type BrainDumpNav = {
+  navigate: (screen: string, params?: object) => void;
+  goBack: () => void;
+  getParent?: () =>
+    | {
+        getParent?: () => { navigate: (name: string, params?: object) => void };
+      }
+    | undefined;
+};
+
+export function BrainDumpScreen({ navigation, route }: { navigation: BrainDumpNav; route?: { params?: { isOnboarding?: boolean } } }) {
   const { colors, spacing } = useTheme();
   const isOnboarding = route?.params?.isOnboarding ?? false;
   const [text, setText] = useState('');
@@ -18,10 +25,26 @@ export function BrainDumpScreen({ navigation, route }: {
   const mutation = useMutation({
     mutationFn: (json: BrainDumpRequest) =>
       apiJson<BrainDumpResponse>('/v1/brain-dump', { method: 'POST', json }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       if (isOnboarding) {
         navigation.navigate('PlanReview', { isOnboarding: true });
+        return;
       }
+      const sigPreview = JSON.stringify(data.signals, null, 2).slice(0, 1200);
+      Alert.alert(
+        data.actionable ? 'Reflection — actionable' : 'Reflection captured',
+        sigPreview + (sigPreview.length >= 1200 ? '\n…' : ''),
+        [
+          { text: 'OK' },
+          {
+            text: 'History',
+            onPress: () => {
+              const tab = navigation.getParent?.()?.getParent?.();
+              tab?.navigate('SettingsTab', { screen: 'BrainDumpHistory' });
+            },
+          },
+        ],
+      );
     },
   });
 

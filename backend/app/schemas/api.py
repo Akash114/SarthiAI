@@ -74,6 +74,12 @@ class CoachingPreferencesState(BaseModel):
     interventions_enabled: bool
     timezone: str | None = None
     updated_at: datetime | None = None
+    home_segment_index: int = Field(
+        0,
+        ge=0,
+        le=1,
+        description="Home segmented control: 0=Personal, 1=Work",
+    )
     # additive v1+: work-hours / personal-slots
     work_hours_start: str | None = Field(None, description="HH:MM local time when work begins, e.g. 09:00")
     work_hours_end: str | None = Field(None, description="HH:MM local time when work ends, e.g. 17:00")
@@ -94,6 +100,7 @@ class CoachingPreferencesPatchRequest(BaseModel):
     task_reminders_enabled: bool | None = None
     interventions_enabled: bool | None = None
     timezone: str | None = Field(None, max_length=64)
+    home_segment_index: int | None = Field(None, ge=0, le=1)
     # additive v1+
     work_hours_start: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
     work_hours_end: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
@@ -109,6 +116,26 @@ class BrainDumpResponse(BaseModel):
     id: UUID
     actionable: bool
     signals: dict[str, Any]
+
+
+class BrainDumpListItem(BaseModel):
+    id: UUID
+    created_at: datetime
+    excerpt: str
+    actionable: bool
+
+
+class BrainDumpListPage(BaseModel):
+    items: list[BrainDumpListItem]
+    next_cursor: str | None = None
+
+
+class BrainDumpDetailResponse(BaseModel):
+    id: UUID
+    body: str
+    actionable: bool
+    signals: dict[str, Any]
+    created_at: datetime
 
 
 class Resolution(BaseModel):
@@ -183,6 +210,7 @@ class DashboardResolutionSummary(BaseModel):
     week_1_plan_status: str
     open_tasks: int
     completed_tasks: int
+    skipped_tasks: int = 0
 
 
 class DashboardResponse(BaseModel):
@@ -287,6 +315,10 @@ class FocusSessionResponse(BaseModel):
     planned_seconds: int | None
 
     model_config = {"from_attributes": True}
+
+
+class FocusSessionListResponse(BaseModel):
+    items: list[FocusSessionResponse]
 
 
 class InterventionCurrentResponse(BaseModel):

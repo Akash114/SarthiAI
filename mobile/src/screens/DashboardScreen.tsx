@@ -9,7 +9,8 @@ export function DashboardScreen() {
   const { data: dashboard } = useDashboard();
   const res = dashboard?.resolution;
 
-  const total = (res?.open_tasks ?? 0) + (res?.completed_tasks ?? 0);
+  const skipped = res?.skipped_tasks ?? 0;
+  const total = (res?.open_tasks ?? 0) + (res?.completed_tasks ?? 0) + skipped;
   const progress = total > 0 ? (res?.completed_tasks ?? 0) / total : 0;
 
   return (
@@ -41,6 +42,7 @@ export function DashboardScreen() {
               />
               <Text style={[{ color: colors.textMuted, fontSize: 12, marginLeft: spacing.xs }]}>
                 {res.open_tasks} open · {res.completed_tasks} done
+                {skipped > 0 ? ` · ${skipped} skipped` : ''}
               </Text>
             </View>
           </Card>

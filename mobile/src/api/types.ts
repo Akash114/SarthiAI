@@ -31,6 +31,8 @@ export interface CoachingPreferencesState {
   interventions_enabled: boolean;
   timezone?: string;
   updated_at?: string;
+  /** 0 = Personal, 1 = Work — Home segmented control */
+  home_segment_index?: number;
   // additive v1+
   work_hours_start?: string;
   work_hours_end?: string;
@@ -43,6 +45,7 @@ export interface CoachingPreferencesPatchRequest {
   task_reminders_enabled?: boolean;
   interventions_enabled?: boolean;
   timezone?: string;
+  home_segment_index?: number;
   // additive v1+
   work_hours_start?: string;
   work_hours_end?: string;
@@ -144,6 +147,10 @@ export interface FocusSessionResponse {
   planned_seconds?: number | null;
 }
 
+export interface FocusSessionListResponse {
+  items: FocusSessionResponse[];
+}
+
 export interface InterventionCurrentResponse {
   intervention: Intervention | null;
 }
@@ -167,6 +174,8 @@ export interface DashboardResolutionSummary {
   week_1_plan_status: Week1PlanStatus;
   open_tasks: number;
   completed_tasks: number;
+  /** Omitted on older API builds; treat as 0 */
+  skipped_tasks?: number;
 }
 
 export interface DashboardResponse {
@@ -194,6 +203,26 @@ export interface BrainDumpResponse {
   id: string;
   actionable: boolean;
   signals: Record<string, unknown>;
+}
+
+export interface BrainDumpListItem {
+  id: string;
+  created_at: string;
+  excerpt: string;
+  actionable: boolean;
+}
+
+export interface BrainDumpListPage {
+  items: BrainDumpListItem[];
+  next_cursor?: string | null;
+}
+
+export interface BrainDumpDetailResponse {
+  id: string;
+  body: string;
+  actionable: boolean;
+  signals: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface Week1PreviewTask {
