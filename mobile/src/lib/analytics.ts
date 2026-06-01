@@ -37,17 +37,17 @@ export function captureOnboardingCompleted(): void {
   client?.capture('onboarding_completed', { platform: platformProp() });
 }
 
-export function captureResolutionCreated(resolutionId: string): void {
-  client?.capture('resolution_created', {
-    resolution_id: resolutionId,
+export function captureGoalCreated(goalId: string): void {
+  client?.capture('goal_created', {
+    goal_id: goalId,
     had_detail: true,
     platform: platformProp(),
   });
 }
 
-export function captureTaskCompleted(resolutionId: string, taskId: string): void {
+export function captureTaskCompleted(taskId: string, goalId?: string | null): void {
   client?.capture('task_completed', {
-    resolution_id: resolutionId,
+    goal_id: goalId ?? null,
     task_id: taskId,
     platform: platformProp(),
   });
@@ -57,12 +57,8 @@ export function captureInterventionPromptShown(interventionId: string): void {
   client?.capture('intervention_prompt_shown', { intervention_id: interventionId, platform: platformProp() });
 }
 
-export function captureInterventionApproved(interventionId: string): void {
-  client?.capture('intervention_approved', { intervention_id: interventionId, platform: platformProp() });
-}
-
-export function captureWeek1PlanRequested(resolutionId: string): void {
-  client?.capture('week_1_plan_requested', { resolution_id: resolutionId, platform: platformProp() });
+export function captureBrainDumpProposalApplied(dumpId: string, proposalCount: number): void {
+  client?.capture('brain_dump_proposals_applied', { dump_id: dumpId, proposal_count: proposalCount, platform: platformProp() });
 }
 
 export function capturePushTokenRegistered(platform: 'android' | 'ios'): void {
