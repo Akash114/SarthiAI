@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 
 import pytest
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
+os.environ["SENTRY_DSN"] = ""
+os.environ["SENTRY_WORKER_DSN"] = ""
+os.environ["POSTHOG_API_KEY"] = ""
+os.environ["GLM_API_KEY"] = ""
+os.environ["OPENAI_API_KEY"] = ""
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -23,7 +29,11 @@ def _settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:6379/15")
     monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
-    monkeypatch.delenv("SENTRY_DSN", raising=False)
+    monkeypatch.setenv("SENTRY_DSN", "")
+    monkeypatch.setenv("SENTRY_WORKER_DSN", "")
+    monkeypatch.setenv("POSTHOG_API_KEY", "")
+    monkeypatch.setenv("GLM_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("AUTH_RATE_LIMIT_PER_MINUTE", "0")
     get_settings.cache_clear()
 
@@ -64,7 +74,7 @@ def client(engine, monkeypatch: pytest.MonkeyPatch):
             j.meta = job_meta
             return j
 
-    monkeypatch.setattr("app.api.v1.core_routes.task_queue", lambda: _InlineQueue())
+    monkeypatch.setattr("app.api.v1.brain_dump_routes.task_queue", lambda: _InlineQueue())
 
     app = create_app()
 
@@ -89,9 +99,12 @@ def client(engine, monkeypatch: pytest.MonkeyPatch):
 def auth_headers(client: TestClient) -> dict[str, str]:
     email = f"u_{uuid.uuid4().hex[:8]}@test.dev"
     r = client.post(
-        "/v1/auth/register",
+        "/v1/auth/password/register",
         json={"email": email, "password": "password123"},
     )
     assert r.status_code == 201, r.text
-    token = r.json()["access_token"]
+    code = r.json()["verification_code"]
+    v = client.post("/v1/auth/password/verify", json={"email": email, "code": code})
+    assert v.status_code == 200, v.text
+    token = v.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
