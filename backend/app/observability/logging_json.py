@@ -32,10 +32,10 @@ class JsonLogFormatter(logging.Formatter):
         ctx = span.get_span_context() if span else None
         if ctx and ctx.is_valid:
             payload["trace_id"] = format(ctx.trace_id, "032x")
-        rid_extra = getattr(record, "resolution_id", None)
-        if rid_extra:
-            payload["resolution_id"] = rid_extra
-        for key in ("route_key", "client_host", "ops_job", "ops_processed", "ops_detail"):
+        goal_id = getattr(record, "goal_id", None)
+        if goal_id:
+            payload["goal_id"] = goal_id
+        for key in ("route_key", "client_host"):
             if key in record.__dict__:
                 payload[key] = record.__dict__[key]
         if record.exc_info:

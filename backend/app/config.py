@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -39,27 +40,34 @@ class Settings(BaseSettings):
     database_pool_size: int = 5
     database_pool_timeout_seconds: int = 30
     redis_socket_timeout_seconds: float = 5.0
-    # Planner (optional OpenAI)
-    openai_api_key: str | None = None
-    openai_planner_model: str = "gpt-4o-mini"
+    # Planner + brain dump (Zhipu GLM Coding Plan — OpenAI-compatible API)
+    glm_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GLM_API_KEY", "OPENAI_API_KEY"),
+    )
+    glm_base_url: str = Field(
+        default="https://api.z.ai/api/coding/paas/v4",
+        validation_alias=AliasChoices("GLM_BASE_URL", "OPENAI_BASE_URL"),
+    )
+    glm_model: str = Field(
+        default="glm-4.7",
+        validation_alias=AliasChoices("GLM_MODEL", "OPENAI_PLANNER_MODEL"),
+    )
     # Push notifications (Expo)
     notifications_enabled: bool = False
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
     expo_access_token: str | None = None
+    # Auth providers
+    google_oauth_client_ids: str | None = None
+    google_tokeninfo_url: str = "https://oauth2.googleapis.com/tokeninfo"
+    email_verification_minutes: int = 30
+    email_delivery_mode: str = "local"
     # APScheduler-driven jobs (optional second process)
     scheduler_enabled: bool = False
     scheduler_timezone: str = "UTC"
-    weekly_job_day: int = 0  # Monday=0 in cron style for day_of_week? APScheduler: 0=Monday
-    weekly_job_hour: int = 9
-    weekly_job_minute: int = 0
-    intervention_job_day: int = 3
-    intervention_job_hour: int = 10
-    intervention_job_minute: int = 0
     task_reminder_interval_minutes: int = 30
     task_reminder_lookahead_minutes: int = 720
     jobs_run_on_startup: bool = False
-    # Ops / manual job triggers (header X-Ops-Key when set)
-    ops_api_key: str | None = None
     debug: bool = False
     # Per-IP limits on unauthenticated auth routes (register/login/refresh). 0 = disabled.
     auth_rate_limit_per_minute: int = 30

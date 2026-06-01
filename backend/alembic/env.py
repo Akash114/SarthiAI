@@ -6,18 +6,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import get_settings
 from app.db import Base
-from app.models import (  # noqa: F401
-    DevicePushToken,
-    FocusSession,
-    IdempotencyRecord,
-    Intervention,
-    RefreshToken,
-    Resolution,
-    Task,
-    TransparencyEntry,
-    User,
-    UserOnboarding,
-)
+import app.models  # noqa: F401 - register canonical ORM tables
 
 config = context.config
 if config.config_file_name is not None:
