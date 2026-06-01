@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
 import type { MainTabParamList } from './types';
 import { HomeStackNavigator } from './stacks/HomeStack';
-import { PlanStackNavigator } from './stacks/PlanStack';
-import { InterventionsStackNavigator } from './stacks/InterventionsStack';
+import { GoalsStackNavigator } from './stacks/GoalsStack';
+import { TeamStackNavigator } from './stacks/TeamStack';
+import { ActivityStackNavigator } from './stacks/ActivityStack';
 import { SettingsStackNavigator } from './stacks/SettingsStack';
 
 const MainTab = createBottomTabNavigator<MainTabParamList>();
@@ -36,18 +37,26 @@ export function MainTabs() {
         }}
       />
       <MainTab.Screen
-        name="PlanTab"
-        component={PlanStackNavigator}
+        name="GoalsTab"
+        component={GoalsStackNavigator}
         options={{
-          tabBarLabel: 'Plan',
-          tabBarIcon: ({ color, size }) => <Ionicons name="list-outline" size={size} color={color} />,
+          tabBarLabel: 'Goals',
+          tabBarIcon: ({ color, size }) => <Ionicons name="flag-outline" size={size} color={color} />,
         }}
       />
       <MainTab.Screen
-        name="InterventionsTab"
-        component={InterventionsStackNavigator}
+        name="TeamTab"
+        component={TeamStackNavigator}
         options={{
-          tabBarLabel: 'Interventions',
+          tabBarLabel: 'Team',
+          tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
+        }}
+      />
+      <MainTab.Screen
+        name="ActivityTab"
+        component={ActivityStackNavigator}
+        options={{
+          tabBarLabel: 'Activity',
           tabBarIcon: ({ color, size }) => <Ionicons name="shield-outline" size={size} color={color} />,
         }}
       />

@@ -9,51 +9,61 @@ export type AuthStackParamList = { Auth: undefined };
 export type OnboardingStackParamList = {
   Welcome: undefined;
   Personalize: { isOnboarding?: boolean };
-  BrainDump: { isOnboarding?: boolean };
-  PlanReview: { isOnboarding?: boolean };
-  PlanActivated: { resolutionId: string };
+  OnboardingNotifications: undefined;
+  FirstGoal: undefined;
 };
 
 // Home stack (within HomeTab)
 export type HomeStackParamList = {
   Home: undefined;
-  FocusMode: { taskId: string; taskTitle: string; durationMinutes?: number };
-  FocusHistory: undefined;
-  BrainDumpModal: { isOnboarding?: boolean };
-};
-
-// Plan stack (within PlanTab)
-export type PlanStackParamList = {
-  Dashboard: undefined;
-  WeeklyPlan: { resolutionId: string };
-  PlanReview: { resolutionId: string; isOnboarding?: boolean };
-  PlanHistory: { resolutionId: string };
-  PlanSnapshotDetail: { snapshotId: string };
+  FocusMode: { taskId?: string; taskTitle?: string };
+  BrainDumpModal: { focusSessionId?: string; taskId?: string; goalId?: string; teamId?: string };
+  BrainDumpReview: { dumpId: string };
   TaskDetail: { taskId: string };
 };
 
-// Interventions stack
-export type InterventionsStackParamList = {
-  Interventions: undefined;
+export type TeamStackParamList = {
+  TeamList: undefined;
+  TeamCreate: undefined;
+  TeamJoin: undefined;
+  TeamBoard: { teamId: string };
+  TeamCreateTask: { teamId: string; goalId?: string };
+  TeamSharedTaskDetail: { teamId: string; taskId: string };
+};
+
+// Goals stack (within GoalsTab)
+export type GoalsStackParamList = {
+  Goals: undefined;
+  GoalsAll: undefined;
+  GoalDetail: { goalId: string };
+  TaskDetail: { taskId: string };
+  EditTask: { taskId: string };
+  CreateTask: { goalId?: string; teamId?: string };
+};
+
+// Activity stack
+export type ActivityStackParamList = {
+  Activity: undefined;
   InterventionsHistory: undefined;
   TransparencyLog: undefined;
-  TransparencyEntry: { entryId: string };
 };
 
 // Settings stack
 export type SettingsStackParamList = {
   Settings: undefined;
   PersonalizeSettings: undefined;
+  FocusHistory: undefined;
   BrainDumpHistory: undefined;
   BrainDumpDetail: { dumpId: string };
-  FocusHistory: undefined;
+  BrainDumpReview: { dumpId: string };
 };
 
 // Main tab stack
 export type MainTabParamList = {
   HomeTab: undefined;
-  PlanTab: NavigatorScreenParams<PlanStackParamList>;
-  InterventionsTab: NavigatorScreenParams<InterventionsStackParamList>;
+  GoalsTab: NavigatorScreenParams<GoalsStackParamList>;
+  TeamTab: NavigatorScreenParams<TeamStackParamList>;
+  ActivityTab: NavigatorScreenParams<ActivityStackParamList>;
   SettingsTab: NavigatorScreenParams<SettingsStackParamList>;
 };
 
@@ -82,12 +92,16 @@ export type HomeStackScreenProps<T extends keyof HomeStackParamList> = Composite
   NativeStackScreenProps<HomeStackParamList, T>,
   MainTabScreenProps<keyof MainTabParamList>
 >;
-export type PlanStackScreenProps<T extends keyof PlanStackParamList> = CompositeScreenProps<
-  NativeStackScreenProps<PlanStackParamList, T>,
+export type GoalsStackScreenProps<T extends keyof GoalsStackParamList> = CompositeScreenProps<
+  NativeStackScreenProps<GoalsStackParamList, T>,
   MainTabScreenProps<keyof MainTabParamList>
 >;
-export type InterventionsStackScreenProps<T extends keyof InterventionsStackParamList> = CompositeScreenProps<
-  NativeStackScreenProps<InterventionsStackParamList, T>,
+export type TeamStackScreenProps<T extends keyof TeamStackParamList> = CompositeScreenProps<
+  NativeStackScreenProps<TeamStackParamList, T>,
+  MainTabScreenProps<keyof MainTabParamList>
+>;
+export type ActivityStackScreenProps<T extends keyof ActivityStackParamList> = CompositeScreenProps<
+  NativeStackScreenProps<ActivityStackParamList, T>,
   MainTabScreenProps<keyof MainTabParamList>
 >;
 export type SettingsStackScreenProps<T extends keyof SettingsStackParamList> = CompositeScreenProps<
@@ -97,6 +111,8 @@ export type SettingsStackScreenProps<T extends keyof SettingsStackParamList> = C
 
 declare global {
   namespace ReactNavigation {
+    // React Navigation expects declaration merging here.
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     interface RootParamList extends RootStackParamList {}
   }
 }
