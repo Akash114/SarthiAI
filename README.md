@@ -109,7 +109,7 @@ You can run the **backend tests** and much of local development **without** any 
 | --- | --- | --- |
 | **[Sentry](https://sentry.io)** | Organization → **Projects**: one for the FastAPI API (and optionally a separate project for the RQ worker), and one **React Native** (or Expo) project for the mobile app. Each project has a **DSN** (public client key for the SDK). | **Backend:** `SENTRY_DSN` in [backend/.env](backend/.env) (from the API project). Optional: `SENTRY_WORKER_DSN` if the worker uses its own project. **Mobile:** `EXPO_PUBLIC_SENTRY_DSN` in `.env` or [mobile/app.json](mobile/app.json) `expo.extra` (from the mobile project’s DSN). Use distinct DSNs for server vs mobile. |
 | **[PostHog](https://posthog.com)** | **Project** → **Project API key** (starts with `phc_…`). Choose **EU** or **US** cloud; the ingest host must match. | **Backend:** `POSTHOG_API_KEY`, `POSTHOG_HOST` (default `https://eu.i.posthog.com` in [backend/app/config.py](backend/app/config.py)). **Mobile:** `EXPO_PUBLIC_POSTHOG_KEY`, optional `EXPO_PUBLIC_POSTHOG_HOST`. |
-| **[OpenAI](https://platform.openai.com)** (optional) | **API key** for the platform account; used when you want LLM-backed planning instead of heuristics only. | **Backend:** `OPENAI_API_KEY`, optional `OPENAI_PLANNER_MODEL` (default `gpt-4o-mini`). |
+| **[Zhipu GLM Coding Plan](https://docs.z.ai/devpack/tool/others)** (optional) | **API key** from your Coding Plan; powers week-1 planning and brain-dump extraction via an OpenAI-compatible endpoint. | **Backend:** `GLM_API_KEY`, optional `GLM_BASE_URL` (default `https://api.z.ai/api/coding/paas/v4`), `GLM_MODEL` (default `glm-4.7`). Legacy env names `OPENAI_API_KEY` / `OPENAI_PLANNER_MODEL` still work. |
 | **[Expo](https://expo.dev)** (optional) | Normal Expo / EAS workflow uses your Expo account for builds. **Expo Push** from the server optionally uses an **[access token](https://docs.expo.dev/push-notifications/sending-notifications/)** if you enable authenticated push sends. | **Backend:** `EXPO_ACCESS_TOKEN` when `NOTIFICATIONS_ENABLED=true` (see [backend/.env.example](backend/.env.example)). |
 
 **Secrets you generate (not from a vendor):**
@@ -137,11 +137,27 @@ You can run the **backend tests** and much of local development **without** any 
 
    More detail: [backend/README.md](backend/README.md).
 
-### Mobile
+### Mobile (Expo, local)
 
 1. From [mobile/](mobile/): `npm ci`.
-2. Copy [mobile/.env.example](mobile/.env.example) to `mobile/.env` if you need a custom API URL (physical device) or telemetry keys.
-3. Defaults for API URL are in [mobile/src/config.ts](mobile/src/config.ts) (Android emulator → `http://10.0.2.2:8000`, iOS simulator → `http://127.0.0.1:8000`). [mobile/app.config.ts](mobile/app.config.ts) merges `EXPO_PUBLIC_*` into `expo.extra`.
+2. Copy [mobile/.env.example](mobile/.env.example) to `mobile/.env` when you need overrides (almost always for a **physical device** on Wi‑Fi: set `EXPO_PUBLIC_API_URL=http://<your-laptop-lan-ip>:8000`, with the API listening on `0.0.0.0` as in the backend section). Emulators use defaults in [mobile/src/config.ts](mobile/src/config.ts) (Android emulator → `http://10.0.2.2:8000`, iOS simulator → `http://127.0.0.1:8000`). [mobile/app.config.ts](mobile/app.config.ts) merges `EXPO_PUBLIC_*` into `expo.extra`.
+3. Start Metro / the dev server from `mobile/`:
+
+   ```bash
+   npm start
+   ```
+
+   (`npm run start` is the same; it runs `expo start`.)
+
+4. **Run the app**
+   - **Emulator / simulator:** with Metro running, press `a` (Android) or `i` (iOS) in the terminal, or in another terminal from `mobile/`: `npm run android` or `npm run ios` (requires Android Studio / Xcode tooling as usual for React Native).
+   - **Physical device:** install **Expo Go that matches the project’s Expo SDK** (this repo uses **SDK 55** — see `expo` in [mobile/package.json](mobile/package.json)). Join the **same Wi‑Fi** as your laptop, then scan the QR code from the Metro terminal (or use the dev tools URL). Ensure `EXPO_PUBLIC_API_URL` points at a host the phone can reach (see `.env.example` for LAN vs `adb reverse` notes).
+
+5. After changing `mobile/.env`, restart with a clean cache: `npx expo start --clear` (or stop Metro and run `npm start -- --clear`).
+
+**“Project is incompatible with this version of Expo Go” (Android):** Google Play’s “latest” Expo Go can still be an older **SDK line** than this project for a while after a new SDK ships. You are already up to date in the store sense, but not for **SDK 55**. Fix: open [expo.dev/go](https://expo.dev/go), choose **SDK 55**, tap **Android** → **Install** (APK / install flow from Expo), then open the project again. Alternatively use a **development build** ([Expo docs](https://docs.expo.dev/develop/development-builds/introduction/)) or `npx expo run:android` once native tooling is installed. Background: [Expo SDK 55 changelog](https://expo.dev/changelog/sdk-55) (Expo Go transition / store lag).
+
+**Red screen: `PlatformConstants` / `TurboModuleRegistry.getEnforcing`:** the **Expo Go native app** (e.g. SDK 55) must match the **React Native** version your JavaScript is built against. This repo pins versions compatible with SDK 55 (see [Expo’s version table](https://docs.expo.dev/versions/latest/)). If you still see this after installing SDK 55 Expo Go, from `mobile/` run `npm ci`, then `npx expo install --fix`, then restart Metro with `npx expo start --clear`.
 
 ### Optional
 

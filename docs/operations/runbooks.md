@@ -58,6 +58,7 @@ Configure with `eas secret:create` (or project env UI). [mobile/app.config.ts](.
 | `EXPO_PUBLIC_POSTHOG_KEY` | PostHog project API key |
 | `EXPO_PUBLIC_POSTHOG_HOST` | Optional; default `https://eu.i.posthog.com` |
 | `EXPO_PUBLIC_SENTRY_ENVIRONMENT` | e.g. `preview`, `production` |
+| `SENTRY_AUTH_TOKEN` | Sentry CLI auth token used by `@sentry/react-native/expo` plugin to upload source maps during EAS builds |
 
 Use **non-production** projects for internal/preview builds per [Android release readiness](../product/android-release-readiness.md).
 
