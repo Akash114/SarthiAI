@@ -1,53 +1,64 @@
 import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
-import { useTheme } from '../theme';
-import { Screen, AppHeader, Card } from '../components';
+import { StyleSheet, Text, View } from 'react-native';
+import { AppHeader, Button, Card, FixedScreen } from '../components';
 import { useTask } from '../hooks/queries';
-import type { PlanStackScreenProps } from '../navigation/types';
+import { useCompleteTask, useReopenTask } from '../hooks/mutations';
+import type { GoalsStackScreenProps, HomeStackScreenProps } from '../navigation/types';
+import { useTheme } from '../theme';
 
-export function TaskDetailScreen({ navigation, route }: PlanStackScreenProps<'TaskDetail'>) {
-  const { colors, spacing } = useTheme();
+type Props = GoalsStackScreenProps<'TaskDetail'> | HomeStackScreenProps<'TaskDetail'>;
+
+export function TaskDetailScreen({ navigation, route }: Props) {
+  const { colors, spacing, typography } = useTheme();
   const taskId = route.params.taskId;
   const { data: task, isPending } = useTask(taskId);
+  const completeTask = useCompleteTask(taskId);
+  const reopenTask = useReopenTask(taskId);
 
   return (
-    <Screen>
-      <AppHeader title="Task" onBack={() => navigation.goBack()} />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
-        {isPending ? (
-          <Text style={{ color: colors.textMuted }}>Loading…</Text>
-        ) : task ? (
-          <>
-            <Card style={{ marginBottom: spacing.md }}>
-              <Text style={[{ color: colors.text, fontWeight: '700', fontSize: 18 }]}>{task.title}</Text>
-              <Text style={[{ color: colors.textMuted, marginTop: spacing.sm }]}>Status: {task.status}</Text>
-            </Card>
-            {(task.due_window_starts_at || task.due_window_ends_at) && (
-              <Card style={{ marginBottom: spacing.md }}>
-                <Text style={[{ color: colors.textSecondary, fontSize: 13 }]}>Due window</Text>
-                {task.due_window_starts_at ? (
-                  <Text style={[{ color: colors.text, marginTop: 4 }]}>
-                    Starts: {new Date(task.due_window_starts_at).toLocaleString()}
-                  </Text>
-                ) : null}
-                {task.due_window_ends_at ? (
-                  <Text style={[{ color: colors.text, marginTop: 4 }]}>
-                    Ends: {new Date(task.due_window_ends_at).toLocaleString()}
-                  </Text>
-                ) : null}
-              </Card>
+    <FixedScreen
+      header={<AppHeader title="Task" onBack={() => navigation.goBack()} />}
+      footer={
+        task ? (
+          <View style={{ gap: spacing.sm }}>
+            <Button title="Edit" variant="ghost" onPress={() => navigation.getParent()?.navigate('GoalsTab', { screen: 'EditTask', params: { taskId } })} />
+            {task.status === 'open' ? (
+              <Button title="Complete" onPress={() => completeTask.mutate()} loading={completeTask.isPending} />
+            ) : (
+              <Button title="Reopen" onPress={() => reopenTask.mutate()} loading={reopenTask.isPending} />
             )}
-            {task.metadata_json && Object.keys(task.metadata_json).length > 0 ? (
-              <Card>
-                <Text style={[{ color: colors.textSecondary, fontSize: 13, marginBottom: spacing.xs }]}>Metadata</Text>
-                <Text style={[{ color: colors.textMuted, fontSize: 12 }]}>{JSON.stringify(task.metadata_json, null, 2)}</Text>
-              </Card>
-            ) : null}
-          </>
-        ) : (
-          <Text style={{ color: colors.textMuted }}>Task not found.</Text>
-        )}
-      </ScrollView>
-    </Screen>
+          </View>
+        ) : undefined
+      }
+    >
+      {isPending ? <Text style={{ color: colors.textMuted }}>Loading task...</Text> : null}
+      {task ? (
+        <>
+          <Text numberOfLines={3} style={[typography.title, { color: colors.text }]}>
+            {task.title}
+          </Text>
+          <Text style={[styles.meta, { color: colors.textSecondary }]}>
+            {task.status} · {task.priority} · {task.owner_type}
+          </Text>
+          <Card style={{ marginTop: spacing.md }}>
+            <Text style={[styles.label, { color: colors.textMuted }]}>NOTES</Text>
+            <Text numberOfLines={6} style={{ color: colors.text, marginTop: 6 }}>
+              {task.notes || 'No notes yet.'}
+            </Text>
+          </Card>
+          <Card style={{ marginTop: spacing.md }}>
+            <Text style={[styles.label, { color: colors.textMuted }]}>SCHEDULE</Text>
+            <Text style={{ color: colors.textSecondary, marginTop: 6 }}>
+              {task.due_at ? `Due ${new Date(task.due_at).toLocaleString()}` : 'No due date'}
+            </Text>
+          </Card>
+        </>
+      ) : null}
+    </FixedScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  meta: { fontSize: 13, marginTop: 6, textTransform: 'capitalize' },
+  label: { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+});

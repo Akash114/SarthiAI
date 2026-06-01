@@ -2,6 +2,7 @@
   "expo": {
     "name": "mobile",
     "slug": "mobile",
+    "scheme": "sarthi",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/favicon.png",
@@ -16,9 +17,11 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sarthiai.mobile"
     },
     "android": {
+      "package": "com.sarthiai.mobile",
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/favicon.png",
@@ -43,7 +46,17 @@
       "posthogKey": "",
       "posthogHost": "https://eu.i.posthog.com",
       "sentryDsn": "",
-      "sentryEnvironment": "development"
+      "sentryEnvironment": "development",
+      "apiUrl": "",
+      "eas": {
+        "projectId": "202a1f6d-04d0-4ed9-af24-9edd2d595859"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/202a1f6d-04d0-4ed9-af24-9edd2d595859"
     }
   }
 }

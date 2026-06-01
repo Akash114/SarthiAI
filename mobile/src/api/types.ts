@@ -1,8 +1,30 @@
-// OpenAPI-derived types mirroring docs/contracts/openapi.yaml component schemas
+// Mobile-facing types for the rebuilt Sarthi companion backend.
 
-export interface User {
+export type OwnerType = 'user' | 'team';
+export type GoalStatus = 'active' | 'completed' | 'archived';
+export type TaskStatus = 'open' | 'completed' | 'cancelled';
+export type TaskPriority = 'low' | 'normal' | 'high';
+export type ProposalStatus = 'pending' | 'applied' | 'dismissed';
+export type BrainDumpProcessingStatus = 'pending' | 'processed' | 'failed';
+export type TeamRole = 'admin' | 'member';
+export type InterventionStatus = 'pending' | 'resolved' | 'dismissed' | 'expired';
+export type NotificationStatus = 'pending' | 'sent' | 'read' | 'failed';
+export type ProfileSource = 'manual' | 'google';
+export type AuthProvider = 'password' | 'google';
+
+export interface AuthMethod {
+  provider: AuthProvider;
+  verified_at?: string | null;
+}
+
+export interface UserProfile {
   id: string;
   email: string;
+  display_name?: string | null;
+  profile_image_url?: string | null;
+  profile_source?: ProfileSource | null;
+  email_verified_at?: string | null;
+  auth_methods: AuthMethod[];
 }
 
 export interface AuthTokenResponse {
@@ -10,199 +32,299 @@ export interface AuthTokenResponse {
   refresh_token: string;
   access_expires_at: string;
   refresh_expires_at: string;
+  user: UserProfile;
 }
 
-export type OnboardingStatus = 'not_started' | 'in_progress' | 'completed';
-
-export interface OnboardingState {
-  status: OnboardingStatus;
-  step: string;
-  updated_at?: string;
+export interface AuthPasswordRegisterRequest {
+  email: string;
+  password: string;
+  display_name?: string;
 }
 
-export interface OnboardingPatchRequest {
-  step?: string;
-  mark_completed?: boolean;
+export interface AuthPasswordRegisterResponse {
+  user_id: string;
+  email: string;
+  verification_required: boolean;
+  verification_code?: string | null;
+}
+
+export interface AuthPasswordVerifyRequest {
+  email: string;
+  code: string;
+}
+
+export interface AuthPasswordLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthGoogleRequest {
+  id_token: string;
+}
+
+export interface AuthRefreshRequest {
+  refresh_token: string;
+}
+
+export interface ProfilePatchRequest {
+  display_name?: string | null;
+  profile_image_url?: string | null;
 }
 
 export interface CoachingPreferencesState {
   coaching_paused: boolean;
   task_reminders_enabled: boolean;
   interventions_enabled: boolean;
-  timezone?: string;
-  updated_at?: string;
-  /** 0 = Personal, 1 = Work — Home segmented control */
+  timezone?: string | null;
+  updated_at?: string | null;
   home_segment_index?: number;
-  // additive v1+
-  work_hours_start?: string;
-  work_hours_end?: string;
-  work_days?: number[];
-  personal_slots?: Record<string, 'morning' | 'afternoon' | 'evening'>;
+  work_hours_start?: string | null;
+  work_hours_end?: string | null;
+  work_days?: number[] | null;
+  personal_slots?: Record<string, 'morning' | 'afternoon' | 'evening'> | null;
 }
 
 export interface CoachingPreferencesPatchRequest {
   coaching_paused?: boolean;
   task_reminders_enabled?: boolean;
   interventions_enabled?: boolean;
-  timezone?: string;
+  timezone?: string | null;
   home_segment_index?: number;
-  // additive v1+
-  work_hours_start?: string;
-  work_hours_end?: string;
-  work_days?: number[];
-  personal_slots?: Record<string, 'morning' | 'afternoon' | 'evening'>;
+  work_hours_start?: string | null;
+  work_hours_end?: string | null;
+  work_days?: number[] | null;
+  personal_slots?: Record<string, 'morning' | 'afternoon' | 'evening'> | null;
 }
 
-export type ResolutionStatus = 'draft' | 'active' | 'completed' | 'abandoned';
-export type Week1PlanStatus = 'not_requested' | 'pending' | 'ready' | 'failed';
-
-export interface Resolution {
+export interface Goal {
   id: string;
+  owner_type: OwnerType;
+  user_id?: string | null;
+  team_id?: string | null;
+  created_by_user_id: string;
   title: string;
-  detail?: string;
-  status: ResolutionStatus;
-  week_1_plan_status: Week1PlanStatus;
-  plan_metadata_json?: Record<string, unknown> | null;
+  description?: string | null;
+  status: GoalStatus;
+  target_at?: string | null;
+  progress_summary?: string | null;
+  metadata_json?: Record<string, unknown> | null;
   created_at: string;
-  updated_at?: string;
+  updated_at: string;
+  completed_at?: string | null;
 }
 
-export interface ResolutionCurrentResponse {
-  resolution: Resolution | null;
-}
-
-export interface ResolutionCreateRequest {
+export interface GoalCreateRequest {
   title: string;
-  detail?: string;
+  description?: string | null;
+  team_id?: string | null;
+  target_at?: string | null;
+  progress_summary?: string | null;
+  metadata_json?: Record<string, unknown> | null;
 }
 
-export interface ResolutionPatchRequest {
+export interface GoalPatchRequest {
   title?: string;
-  detail?: string;
-  status?: ResolutionStatus;
+  description?: string | null;
+  status?: GoalStatus;
+  target_at?: string | null;
+  progress_summary?: string | null;
+  metadata_json?: Record<string, unknown> | null;
 }
 
-export interface GenerateWeek1Response {
-  week_1_plan_status: Week1PlanStatus;
-  job_id?: string;
+export interface GoalListResponse {
+  goals: Goal[];
 }
-
-export type TaskStatus = 'open' | 'completed' | 'skipped';
 
 export interface Task {
   id: string;
-  resolution_id: string;
+  owner_type: OwnerType;
+  user_id?: string | null;
+  team_id?: string | null;
+  goal_id?: string | null;
+  created_by_user_id: string;
+  assignee_user_id?: string | null;
+  completed_by_user_id?: string | null;
   title: string;
+  notes?: string | null;
   status: TaskStatus;
+  priority: TaskPriority;
   sort_order: number;
-  due_window_starts_at?: string;
-  due_window_ends_at?: string;
-  metadata_json?: Record<string, unknown>;
+  due_at?: string | null;
+  due_window_starts_at?: string | null;
+  due_window_ends_at?: string | null;
+  source: string;
+  metadata_json?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
 }
 
 export interface TaskCreateRequest {
   title: string;
-  resolution_id?: string;
-  note?: string;
+  notes?: string | null;
+  goal_id?: string | null;
+  team_id?: string | null;
+  assignee_user_id?: string | null;
+  priority?: TaskPriority;
   sort_order?: number;
+  due_at?: string | null;
+  due_window_starts_at?: string | null;
+  due_window_ends_at?: string | null;
+  metadata_json?: Record<string, unknown> | null;
 }
 
 export interface TaskPatchRequest {
   title?: string;
-  note?: string;
+  notes?: string | null;
+  goal_id?: string | null;
+  assignee_user_id?: string | null;
   status?: TaskStatus;
+  priority?: TaskPriority;
   sort_order?: number;
+  due_at?: string | null;
+  due_window_starts_at?: string | null;
+  due_window_ends_at?: string | null;
+  metadata_json?: Record<string, unknown> | null;
 }
 
 export interface TaskListResponse {
   tasks: Task[];
 }
 
-export type InterventionStatus = 'pending' | 'approved' | 'dismissed' | 'expired';
-
-export interface Intervention {
+export interface Team {
   id: string;
-  status: InterventionStatus;
-  summary: string;
-  detail_json?: Record<string, unknown> | null;
-  created_at?: string;
-  resolved_at?: string;
+  name: string;
+  invite_code: string;
+  created_by_user_id: string;
+  created_at: string;
 }
 
-export interface FocusSessionCreateRequest {
-  task_id: string;
-  planned_seconds?: number | null;
+export interface TeamSummary {
+  id: string;
+  name: string;
+  role: TeamRole;
+  member_count: number;
 }
 
-export interface FocusSessionPatchRequest {
+export interface TeamListResponse {
+  teams: TeamSummary[];
+}
+
+export interface TeamCreateRequest {
+  name: string;
+}
+
+export interface TeamCreateResponse {
+  team: Team;
+  invite_code: string;
+}
+
+export interface TeamMember {
+  user_id: string;
+  email: string;
+  role: TeamRole;
+  joined_at: string;
+  display_name?: string | null;
+  profile_image_url?: string | null;
+}
+
+export interface TeamDetailResponse {
+  team: Team;
+  members: TeamMember[];
+}
+
+export interface TeamJoinRequest {
+  invite_code: string;
+}
+
+export interface FocusSessionStartRequest {
+  task_id?: string | null;
+  context_snapshot_json?: Record<string, unknown> | null;
+}
+
+export interface FocusSessionEndRequest {
   ended_at?: string | null;
 }
 
 export interface FocusSessionResponse {
   id: string;
   user_id: string;
-  task_id: string | null;
+  task_id?: string | null;
   started_at: string;
   ended_at?: string | null;
-  planned_seconds?: number | null;
+  elapsed_seconds: number;
+  context_snapshot_json?: Record<string, unknown> | null;
 }
 
-export interface FocusSessionListResponse {
-  items: FocusSessionResponse[];
-}
-
-export interface InterventionCurrentResponse {
-  intervention: Intervention | null;
-}
-
-export interface TransparencyEntry {
+export interface FocusSessionSummary {
   id: string;
-  action_type: string;
-  headline: string;
-  detail?: string;
-  created_at: string;
+  task_id?: string | null;
+  task_title?: string | null;
+  started_at: string;
+  ended_at?: string | null;
+  elapsed_seconds: number;
 }
 
-export interface TransparencyLogPage {
-  items: TransparencyEntry[];
+export interface FocusSessionListPage {
+  items: FocusSessionSummary[];
   next_cursor?: string | null;
 }
 
-export interface DashboardResolutionSummary {
-  id: string;
-  title: string;
-  week_1_plan_status: Week1PlanStatus;
-  open_tasks: number;
-  completed_tasks: number;
-  /** Omitted on older API builds; treat as 0 */
-  skipped_tasks?: number;
-}
-
-export interface DashboardResponse {
-  resolution: DashboardResolutionSummary | null;
-  pending_intervention: boolean;
-}
-
-export interface JourneyTaskItem {
-  id: string;
-  title: string;
-  status: string;
-  due_window_ends_at?: string | null;
-}
-
-export interface DailyJourneyResponse {
-  date: string;
-  tasks: JourneyTaskItem[];
-}
-
-export interface BrainDumpRequest {
+export interface BrainDumpCreateRequest {
   text: string;
+  focus_session_id?: string | null;
+  task_id?: string | null;
+  goal_id?: string | null;
+  team_id?: string | null;
+}
+
+export interface BrainDumpAiResult {
+  acknowledgement?: string;
+  source?: string;
+  proposal_count?: number;
+  [key: string]: unknown;
+}
+
+export interface BrainDumpProposal {
+  id: string;
+  brain_dump_id: string;
+  change_type: 'create_goal' | 'update_goal' | 'create_task' | 'update_task' | string;
+  target_type: 'goal' | 'task' | string;
+  target_id?: string | null;
+  payload: Record<string, unknown>;
+  rationale?: string | null;
+  confidence?: number | null;
+  status: ProposalStatus;
+  created_at: string;
+  applied_at?: string | null;
 }
 
 export interface BrainDumpResponse {
   id: string;
+  body: string;
   actionable: boolean;
-  signals: Record<string, unknown>;
+  processing_status: BrainDumpProcessingStatus;
+  focus_session_id?: string | null;
+  active_task_id?: string | null;
+  active_goal_id?: string | null;
+  team_id?: string | null;
+  context_snapshot?: Record<string, unknown> | null;
+  ai_result?: BrainDumpAiResult | null;
+  proposals: BrainDumpProposal[];
+  created_at: string;
+  processed_at?: string | null;
+}
+
+export interface BrainDumpApplyRequest {
+  proposal_ids?: string[];
+}
+
+export interface BrainDumpApplyResponse {
+  applied_proposal_ids: string[];
+  created_goal_ids: string[];
+  updated_goal_ids: string[];
+  created_task_ids: string[];
+  updated_task_ids: string[];
 }
 
 export interface BrainDumpListItem {
@@ -210,6 +332,7 @@ export interface BrainDumpListItem {
   created_at: string;
   excerpt: string;
   actionable: boolean;
+  processing_status: BrainDumpProcessingStatus;
 }
 
 export interface BrainDumpListPage {
@@ -217,43 +340,58 @@ export interface BrainDumpListPage {
   next_cursor?: string | null;
 }
 
-export interface BrainDumpDetailResponse {
+export interface CompanionNotification {
   id: string;
-  body: string;
-  actionable: boolean;
-  signals: Record<string, unknown>;
-  created_at: string;
-}
-
-export interface Week1PreviewTask {
+  user_id: string;
+  team_id?: string | null;
+  goal_id?: string | null;
+  task_id?: string | null;
+  kind: string;
   title: string;
-  sort_order: number;
-}
-
-export interface Week1PreviewResponse {
-  planner_version: string;
-  source: string;
-  tasks: Week1PreviewTask[];
-  snapshot_id: string;
-}
-
-export interface PlanSnapshotItem {
-  id: string;
-  kind: string;
-  planner_version: string;
+  body?: string | null;
+  status: NotificationStatus;
+  payload_json?: Record<string, unknown> | null;
   created_at: string;
+  sent_at?: string | null;
+  read_at?: string | null;
 }
 
-export interface PlanSnapshotDetail {
+export interface CompanionNotificationListResponse {
+  notifications: CompanionNotification[];
+}
+
+export interface Intervention {
   id: string;
-  kind: string;
-  planner_version: string;
-  tasks: Week1PreviewTask[];
-  created_at: string;
+  user_id?: string | null;
+  team_id?: string | null;
+  goal_id?: string | null;
+  task_id?: string | null;
+  severity?: string | null;
+  reason?: string | null;
+  status: InterventionStatus;
+  summary: string;
+  suggested_action?: string | null;
+  detail_json?: Record<string, unknown> | null;
+  created_at?: string;
+  resolved_at?: string | null;
 }
 
-export interface PlanHistoryResponse {
-  items: PlanSnapshotItem[];
+export interface InterventionListResponse {
+  interventions: Intervention[];
+}
+
+export interface TransparencyEntry {
+  id: string;
+  action_type: string;
+  headline: string;
+  detail?: string | null;
+  created_at: string;
+  metadata_json?: Record<string, unknown> | null;
+}
+
+export interface TransparencyLogPage {
+  items: TransparencyEntry[];
+  next_cursor?: string | null;
 }
 
 export interface NotificationsConfigResponse {

@@ -12,7 +12,10 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "preview"
+      }
     },
     "production": {
       "channel": "production"

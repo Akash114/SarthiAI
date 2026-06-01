@@ -1,142 +1,55 @@
-import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiJson, type AuthTokenResponse } from '../api/client';
+import { useQuery } from '@tanstack/react-query';
+import { apiJson } from '../api/client';
+import { useSessionStore } from '../state/sessionStore';
 import type {
-  User,
-  OnboardingState,
-  CoachingPreferencesState,
-  Resolution,
-  Task,
-  Intervention,
-  DashboardResponse,
-  DailyJourneyResponse,
-  TransparencyLogPage,
-  TransparencyEntry,
-  BrainDumpResponse,
-  PlanHistoryResponse,
-  PlanSnapshotDetail,
-  Week1PreviewResponse,
-  NotificationsConfigResponse,
   BrainDumpListPage,
-  BrainDumpDetailResponse,
-  FocusSessionListResponse,
+  BrainDumpResponse,
+  CompanionNotificationListResponse,
+  CoachingPreferencesState,
+  FocusSessionListPage,
+  FocusSessionResponse,
+  Goal,
+  GoalListResponse,
+  InterventionListResponse,
+  NotificationsConfigResponse,
+  Task,
+  TaskListResponse,
+  TeamDetailResponse,
+  TeamListResponse,
+  TransparencyLogPage,
+  UserProfile,
 } from '../api/types';
+
+function queryString(params: Record<string, string | number | undefined | null>) {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    sp.set(key, String(value));
+  });
+  const qs = sp.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export function useIsAuthenticated() {
+  return useSessionStore((s) => !!s.accessToken);
+}
 
 // Auth
 export function useMe() {
-  return useQuery<User>({
+  const authed = useIsAuthenticated();
+  return useQuery<UserProfile>({
     queryKey: ['me'],
-    queryFn: () => apiJson<User>('/v1/me'),
-  });
-}
-
-export function useOnboarding() {
-  return useQuery<OnboardingState>({
-    queryKey: ['onboarding'],
-    queryFn: () => apiJson<OnboardingState>('/v1/onboarding'),
+    queryFn: () => apiJson<UserProfile>('/v1/me'),
+    enabled: authed,
   });
 }
 
 export function usePreferences() {
+  const authed = useIsAuthenticated();
   return useQuery<CoachingPreferencesState>({
     queryKey: ['preferences'],
     queryFn: () => apiJson<CoachingPreferencesState>('/v1/preferences'),
-  });
-}
-
-export function useCurrentResolution() {
-  return useQuery<Resolution | null>({
-    queryKey: ['resolution', 'current'],
-    queryFn: async () => {
-      const res = await apiJson<{ resolution: Resolution | null }>('/v1/resolutions/current');
-      return res.resolution;
-    },
-  });
-}
-
-export function useResolution(id: string) {
-  return useQuery<Resolution>({
-    queryKey: ['resolution', id],
-    queryFn: () => apiJson<Resolution>(`/v1/resolutions/${id}`),
-    enabled: !!id,
-  });
-}
-
-export function useWeek1Tasks(resolutionId: string) {
-  return useQuery<Task[]>({
-    queryKey: ['tasks', resolutionId],
-    queryFn: () =>
-      apiJson<{ tasks: Task[] }>(`/v1/resolutions/${resolutionId}/tasks`).then((r) => r.tasks),
-    enabled: !!resolutionId,
-  });
-}
-
-export function useDashboard() {
-  return useQuery<DashboardResponse>({
-    queryKey: ['dashboard'],
-    queryFn: () => apiJson<DashboardResponse>('/v1/dashboard'),
-  });
-}
-
-export function useJourneyDaily() {
-  return useQuery<DailyJourneyResponse>({
-    queryKey: ['journey', 'daily'],
-    queryFn: () => apiJson<DailyJourneyResponse>('/v1/journey/daily'),
-  });
-}
-
-export function useCurrentIntervention() {
-  return useQuery<Intervention | null>({
-    queryKey: ['intervention', 'current'],
-    queryFn: async () => {
-      const res = await apiJson<{ intervention: Intervention | null }>('/v1/interventions/current');
-      return res.intervention;
-    },
-  });
-}
-
-export function useInterventionHistory() {
-  return useQuery<Intervention[]>({
-    queryKey: ['interventions', 'history'],
-    queryFn: () => apiJson<Intervention[]>('/v1/interventions/history'),
-  });
-}
-
-export function useTransparencyLog(params?: { cursor?: string; limit?: number; action_type?: string }) {
-  const searchParams = new URLSearchParams();
-  if (params?.cursor) searchParams.set('cursor', params.cursor);
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.action_type) searchParams.set('action_type', params.action_type);
-  const qs = searchParams.toString();
-  return useQuery<TransparencyLogPage>({
-    queryKey: ['transparency-log', params],
-    queryFn: () =>
-      apiJson<TransparencyLogPage>(`/v1/transparency-log${qs ? `?${qs}` : ''}`),
-  });
-}
-
-export function useTransparencyLogInfinite(params?: { limit?: number; action_type?: string | null }) {
-  const limit = params?.limit ?? 50;
-  const actionType = params?.action_type ?? undefined;
-  return useInfiniteQuery({
-    queryKey: ['transparency-log', 'infinite', limit, actionType],
-    initialPageParam: undefined as string | undefined,
-    queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
-      const searchParams = new URLSearchParams();
-      if (pageParam) searchParams.set('cursor', pageParam);
-      searchParams.set('limit', String(limit));
-      if (actionType) searchParams.set('action_type', actionType);
-      const qs = searchParams.toString();
-      return apiJson<TransparencyLogPage>(`/v1/transparency-log?${qs}`);
-    },
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
-  });
-}
-
-export function useTransparencyEntry(entryId: string) {
-  return useQuery<TransparencyEntry>({
-    queryKey: ['transparency-entry', entryId],
-    queryFn: () => apiJson<TransparencyEntry>(`/v1/transparency-log/${entryId}`),
-    enabled: !!entryId,
+    enabled: authed,
   });
 }
 
@@ -147,70 +60,154 @@ export function useNotificationsConfig() {
   });
 }
 
+export function useGoals(params?: { team_id?: string | null; status?: 'active' | 'completed' | 'archived' | 'all' }) {
+  const authed = useIsAuthenticated();
+  const query = queryString({ team_id: params?.team_id, status: params?.status ?? 'active' });
+  return useQuery<GoalListResponse>({
+    queryKey: ['goals', params?.team_id ?? 'me', params?.status ?? 'active'],
+    queryFn: () => apiJson<GoalListResponse>(`/v1/goals${query}`),
+    enabled: authed,
+  });
+}
+
+export function useGoal(goalId: string) {
+  const authed = useIsAuthenticated();
+  return useQuery<Goal>({
+    queryKey: ['goal', goalId],
+    queryFn: () => apiJson<Goal>(`/v1/goals/${goalId}`),
+    enabled: authed && !!goalId,
+  });
+}
+
+export function useTasks(params?: {
+  team_id?: string | null;
+  goal_id?: string | null;
+  status?: 'open' | 'completed' | 'cancelled' | 'all';
+}) {
+  const authed = useIsAuthenticated();
+  const query = queryString({
+    team_id: params?.team_id,
+    goal_id: params?.goal_id,
+    status: params?.status ?? 'open',
+  });
+  return useQuery<TaskListResponse>({
+    queryKey: ['tasks', params?.team_id ?? 'me', params?.goal_id ?? 'all', params?.status ?? 'open'],
+    queryFn: () => apiJson<TaskListResponse>(`/v1/tasks${query}`),
+    enabled: authed,
+  });
+}
+
+export function useGoalTasks(goalId: string, status: 'open' | 'completed' | 'cancelled' | 'all' = 'open') {
+  const authed = useIsAuthenticated();
+  return useQuery<TaskListResponse>({
+    queryKey: ['goal-tasks', goalId, status],
+    queryFn: () => apiJson<TaskListResponse>(`/v1/goals/${goalId}/tasks${queryString({ status })}`),
+    enabled: authed && !!goalId,
+  });
+}
+
 export function useTask(taskId: string) {
+  const authed = useIsAuthenticated();
   return useQuery<Task>({
     queryKey: ['task', taskId],
     queryFn: () => apiJson<Task>(`/v1/tasks/${taskId}`),
-    enabled: !!taskId,
+    enabled: authed && !!taskId,
   });
 }
 
-export function useBrainDumpsInfinite(limit = 20) {
-  return useInfiniteQuery({
-    queryKey: ['brain-dumps', 'infinite', limit],
-    initialPageParam: undefined as string | undefined,
-    queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
-      const sp = new URLSearchParams();
-      if (pageParam) sp.set('cursor', pageParam);
-      sp.set('limit', String(limit));
-      return apiJson<BrainDumpListPage>(`/v1/brain-dumps?${sp.toString()}`);
-    },
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+export function useNotifications(limit = 20) {
+  const authed = useIsAuthenticated();
+  return useQuery<CompanionNotificationListResponse>({
+    queryKey: ['notifications', limit],
+    queryFn: () => apiJson<CompanionNotificationListResponse>(`/v1/notifications${queryString({ limit })}`),
+    enabled: authed,
   });
 }
 
-export function useBrainDumpDetail(dumpId: string) {
-  return useQuery<BrainDumpDetailResponse>({
+export function useInterventions(status: 'pending' | 'resolved' | 'dismissed' | 'expired' | 'all' = 'pending') {
+  const authed = useIsAuthenticated();
+  return useQuery<InterventionListResponse>({
+    queryKey: ['interventions', status],
+    queryFn: () => apiJson<InterventionListResponse>(`/v1/interventions${queryString({ status })}`),
+    enabled: authed,
+  });
+}
+
+export function useTransparency(params?: { cursor?: string; limit?: number }) {
+  const authed = useIsAuthenticated();
+  const query = queryString({ cursor: params?.cursor, limit: params?.limit ?? 20 });
+  return useQuery<TransparencyLogPage>({
+    queryKey: ['transparency', params?.cursor ?? null, params?.limit ?? 20],
+    queryFn: () => apiJson<TransparencyLogPage>(`/v1/transparency${query}`),
+    enabled: authed,
+  });
+}
+
+export function useBrainDumps(params?: { cursor?: string; limit?: number }) {
+  const authed = useIsAuthenticated();
+  const query = queryString({ cursor: params?.cursor, limit: params?.limit ?? 5 });
+  return useQuery<BrainDumpListPage>({
+    queryKey: ['brain-dumps', params?.cursor ?? null, params?.limit ?? 5],
+    queryFn: () => apiJson<BrainDumpListPage>(`/v1/brain-dumps${query}`),
+    enabled: authed,
+  });
+}
+
+export function useBrainDumpDetail(dumpId: string, poll = false) {
+  const authed = useIsAuthenticated();
+  return useQuery<BrainDumpResponse>({
     queryKey: ['brain-dump', dumpId],
-    queryFn: () => apiJson<BrainDumpDetailResponse>(`/v1/brain-dumps/${dumpId}`),
-    enabled: !!dumpId,
-  });
-}
-
-export function useFocusSessions(limit = 40) {
-  return useQuery<FocusSessionListResponse>({
-    queryKey: ['focus-sessions', limit],
-    queryFn: () => {
-      const sp = new URLSearchParams({ limit: String(limit) });
-      return apiJson<FocusSessionListResponse>(`/v1/focus-sessions?${sp.toString()}`);
+    queryFn: () => apiJson<BrainDumpResponse>(`/v1/brain-dumps/${dumpId}`),
+    enabled: authed && !!dumpId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return poll && data?.processing_status === 'pending' ? 1500 : false;
     },
   });
 }
 
-export function usePlanHistory(resolutionId: string) {
-  return useQuery<PlanHistoryResponse>({
-    queryKey: ['plan-history', resolutionId],
-    queryFn: () => apiJson<PlanHistoryResponse>(`/v1/resolutions/${resolutionId}/plan-history`),
-    enabled: !!resolutionId,
+export function useActiveFocusSession() {
+  const authed = useIsAuthenticated();
+  return useQuery<FocusSessionResponse | null>({
+    queryKey: ['focus-session', 'active'],
+    queryFn: () => apiJson<FocusSessionResponse | null>('/v1/focus-sessions/active'),
+    enabled: authed,
   });
 }
 
-export function usePlanSnapshot(snapshotId: string) {
-  return useQuery<PlanSnapshotDetail>({
-    queryKey: ['plan-snapshot', snapshotId],
-    queryFn: () => apiJson<PlanSnapshotDetail>(`/v1/plan-snapshots/${snapshotId}`),
-    enabled: !!snapshotId,
+export function useFocusSessions(params?: { cursor?: string; limit?: number }) {
+  const authed = useIsAuthenticated();
+  const query = queryString({ cursor: params?.cursor, limit: params?.limit ?? 5 });
+  return useQuery<FocusSessionListPage>({
+    queryKey: ['focus-sessions', params?.cursor ?? null, params?.limit ?? 5],
+    queryFn: () => apiJson<FocusSessionListPage>(`/v1/focus-sessions${query}`),
+    enabled: authed,
   });
 }
 
-export function useWeek1Preview(resolutionId: string) {
-  return useQuery<Week1PreviewResponse>({
-    queryKey: ['week1-preview', resolutionId],
-    queryFn: () =>
-      apiJson<{ snapshot_id: string }>(`/v1/resolutions/${resolutionId}/week-1/preview`, { method: 'POST' }).then(
-        (r) =>
-          apiJson<Week1PreviewResponse>(`/v1/plan-snapshots/${r.snapshot_id}`)
-      ),
-    enabled: !!resolutionId,
+export function useTeams() {
+  const authed = useIsAuthenticated();
+  return useQuery<TeamListResponse>({
+    queryKey: ['teams'],
+    queryFn: () => apiJson<TeamListResponse>('/v1/teams'),
+    enabled: authed,
+  });
+}
+
+export function useTeam(teamId: string) {
+  const authed = useIsAuthenticated();
+  return useQuery<TeamDetailResponse>({
+    queryKey: ['team', teamId],
+    queryFn: () => apiJson<TeamDetailResponse>(`/v1/teams/${teamId}`),
+    enabled: authed && !!teamId,
+  });
+}
+
+export function useSharedTasks(teamId: string, status: 'open' | 'completed' | 'all' = 'open') {
+  const authed = useIsAuthenticated();
+  return useQuery<TaskListResponse>({
+    queryKey: ['shared-tasks', teamId, status],
+    queryFn: () => apiJson<TaskListResponse>(`/v1/tasks${queryString({ team_id: teamId, status })}`),
+    enabled: authed && !!teamId,
   });
 }

@@ -1,22 +1,39 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Switch, Alert, TextInput } from 'react-native';
-import { useTheme } from '../theme';
-import { Screen, AppHeader, Card, ListRow, Button } from '../components';
-import { usePreferences, useNotificationsConfig } from '../hooks/queries';
-import { usePatchPreferences, useMergeAnonymous } from '../hooks/mutations';
+import React, { useEffect, useState } from 'react';
+import { Alert, Switch, Text, TextInput, View } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
+import { AppHeader, Button, Card, FixedScreen, ListRow, Modal } from '../components';
+import { useMe, useNotificationsConfig, usePreferences } from '../hooks/queries';
+import { usePatchPreferences, usePatchProfile } from '../hooks/mutations';
 import { useSessionStore } from '../state/sessionStore';
 import { apiJson } from '../api/client';
-import { ensureNotificationPermission, unregisterPushTokenFromBackend } from '../lib/notifications';
+import { enablePushAndRegister, unregisterPushTokenFromBackend } from '../lib/notifications';
 import type { SettingsStackScreenProps } from '../navigation/types';
+import { useTheme } from '../theme';
 
 export function SettingsScreen({ navigation }: SettingsStackScreenProps<'Settings'>) {
   const { colors, spacing } = useTheme();
   const { data: prefs } = usePreferences();
   const { data: notifCfg } = useNotificationsConfig();
+  const { data: me } = useMe();
   const patchPrefs = usePatchPreferences();
-  const mergeAnonymous = useMergeAnonymous();
+  const patchProfile = usePatchProfile();
+  const queryClient = useQueryClient();
   const clearSession = useSessionStore((s) => s.clearSession);
-  const [anonymousId, setAnonymousId] = useState('');
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+
+  useEffect(() => {
+    setDisplayName(me?.display_name ?? '');
+  }, [me?.display_name]);
+
+  const saveProfile = async () => {
+    try {
+      await patchProfile.mutateAsync({ display_name: displayName.trim() || null });
+      setProfileOpen(false);
+    } catch (e) {
+      Alert.alert('Could not update profile', e instanceof Error ? e.message : 'Try again.');
+    }
+  };
 
   const toggle = (key: 'coaching_paused' | 'task_reminders_enabled' | 'interventions_enabled') => {
     patchPrefs.mutate({ [key]: !(prefs?.[key] ?? false) });
@@ -27,160 +44,74 @@ export function SettingsScreen({ navigation }: SettingsStackScreenProps<'Setting
     try {
       await apiJson('/v1/auth/logout', { method: 'POST', json: { revoke_all: false } });
     } catch {
-      /* ignore */
+      /* ignore logout network errors */
     }
+    queryClient.clear();
     await clearSession();
   };
 
   const handlePushPermission = async () => {
     if (notifCfg && !notifCfg.enabled) {
-      Alert.alert(
-        'Server notifications off',
-        'This environment has push delivery disabled on the server. You can still enable OS permission locally.',
-      );
+      Alert.alert('Server push disabled', `Provider: ${notifCfg.provider}. Tokens can still be saved for later.`);
     }
-    const granted = await ensureNotificationPermission();
-    if (!granted) Alert.alert('Permission denied', 'Enable notifications in your device settings.');
-  };
-
-  const onMerge = () => {
-    const raw = anonymousId.trim();
-    if (!raw) {
-      Alert.alert('Anonymous user ID', 'Paste the UUID of the anonymous account to merge.');
-      return;
-    }
-    mergeAnonymous.mutate(raw, {
-      onSuccess: (res) => {
-        Alert.alert(res.merged ? 'Merged' : 'Not merged', res.message);
-        if (res.merged) setAnonymousId('');
-      },
-      onError: (e) => Alert.alert('Merge failed', e instanceof Error ? e.message : 'Unknown error'),
-    });
+    const result = await enablePushAndRegister();
+    Alert.alert(result.granted ? 'Notifications updated' : 'Permission denied');
   };
 
   return (
-    <Screen>
-      <AppHeader title="Settings" />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
-        {notifCfg && !notifCfg.enabled ? (
-          <Card style={{ marginBottom: spacing.md, borderColor: colors.warning, borderWidth: 1 }}>
-            <Text style={[{ color: colors.warning, fontWeight: '600' }]}>Server push disabled</Text>
-            <Text style={[{ color: colors.textSecondary, fontSize: 13, marginTop: 4 }]}>
-              Provider: {notifCfg.provider}. Tokens may still be stored for when notifications are enabled.
-            </Text>
-          </Card>
-        ) : null}
-
-        <Card>
-          <ListRow
-            label="Pause Coaching"
-            right={
-              <Switch
-                value={prefs?.coaching_paused ?? false}
-                onValueChange={() => toggle('coaching_paused')}
-                trackColor={{ true: colors.indigo }}
-              />
-            }
-          />
-          <ListRow
-            label="Task Reminders"
-            right={
-              <Switch
-                value={prefs?.task_reminders_enabled ?? true}
-                onValueChange={() => toggle('task_reminders_enabled')}
-                trackColor={{ true: colors.indigo }}
-              />
-            }
-          />
-          <ListRow
-            label="Interventions"
-            right={
-              <Switch
-                value={prefs?.interventions_enabled ?? true}
-                onValueChange={() => toggle('interventions_enabled')}
-                trackColor={{ true: colors.indigo }}
-              />
-            }
-          />
+    <FixedScreen
+      header={<AppHeader title="Settings" />}
+      footer={<Button title="Log out" variant="destructive" onPress={handleLogout} />}
+    >
+      {notifCfg && !notifCfg.enabled ? (
+        <Card style={{ marginBottom: spacing.md, borderColor: colors.warning, borderWidth: 1 }}>
+          <Text style={{ color: colors.warning, fontWeight: '600' }}>Server push disabled</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 4 }}>Provider: {notifCfg.provider}</Text>
         </Card>
+      ) : null}
 
-        <Button
-          title="Personalize Preferences"
-          variant="ghost"
-          onPress={() => navigation.push('PersonalizeSettings')}
-          style={{ marginTop: spacing.lg }}
+      <Card>
+        <ListRow
+          label="Pause coaching"
+          right={<Switch value={prefs?.coaching_paused ?? false} onValueChange={() => toggle('coaching_paused')} trackColor={{ true: colors.indigo }} />}
         />
-
-        <Button
-          title="Past reflections"
-          variant="ghost"
-          onPress={() => navigation.push('BrainDumpHistory')}
-          style={{ marginTop: spacing.sm }}
+        <ListRow
+          label="Task reminders"
+          right={<Switch value={prefs?.task_reminders_enabled ?? true} onValueChange={() => toggle('task_reminders_enabled')} trackColor={{ true: colors.indigo }} />}
         />
-
-        <Button
-          title="Focus session history"
-          variant="ghost"
-          onPress={() => navigation.push('FocusHistory')}
-          style={{ marginTop: spacing.sm }}
+        <ListRow
+          label="Interventions"
+          right={<Switch value={prefs?.interventions_enabled ?? true} onValueChange={() => toggle('interventions_enabled')} trackColor={{ true: colors.indigo }} />}
         />
+      </Card>
 
-        <Button
-          title="Enable Notifications"
-          variant="ghost"
-          onPress={handlePushPermission}
-          style={{ marginTop: spacing.sm }}
+      <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
+        <Button title="Edit profile" variant="ghost" onPress={() => setProfileOpen(true)} />
+        <Button title="Personalize" variant="ghost" onPress={() => navigation.push('PersonalizeSettings')} />
+        <Button title="Focus history" variant="ghost" onPress={() => navigation.push('FocusHistory')} />
+        <Button title="Brain dump history" variant="ghost" onPress={() => navigation.push('BrainDumpHistory')} />
+        <Button title="Enable notifications" variant="ghost" onPress={handlePushPermission} />
+      </View>
+
+      <Modal visible={profileOpen} onDismiss={() => setProfileOpen(false)} title="Profile">
+        <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>Display name</Text>
+        <TextInput
+          value={displayName}
+          onChangeText={setDisplayName}
+          placeholder={me?.email?.split('@')[0] ?? 'Your name'}
+          placeholderTextColor={colors.textMuted}
+          style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, color: colors.text }}
         />
+        <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: spacing.sm }}>{me?.email}</Text>
+        <Button title="Save" onPress={saveProfile} loading={patchProfile.isPending} style={{ marginTop: spacing.md }} />
+      </Modal>
 
-        <Card style={{ marginTop: spacing.lg }}>
-          <Text style={[{ color: colors.textSecondary, fontSize: 13, marginBottom: spacing.sm }]}>
-            Link anonymous account
-          </Text>
-          <Text style={[{ color: colors.textMuted, fontSize: 12, marginBottom: spacing.sm }]}>
-            If you have an anonymous user UUID from a prior install, merge its data into this account.
-          </Text>
-          <TextInput
-            value={anonymousId}
-            onChangeText={setAnonymousId}
-            placeholder="Anonymous user UUID"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            style={[
-              styles.input,
-              { borderColor: colors.border, color: colors.text, marginBottom: spacing.sm },
-            ]}
-          />
-          <Button title="Merge anonymous data" onPress={onMerge} loading={mergeAnonymous.isPending} />
-        </Card>
-
-        {__DEV__ && (
-          <Button
-            title="Dev: SliceScreen"
-            variant="ghost"
-            onPress={() => {
-              Alert.alert('Dev info', 'SliceScreen is at src/screens/dev/SliceScreen.tsx');
-            }}
-            style={{ marginTop: spacing.sm }}
-          />
-        )}
-
-        <Button
-          title="Log out"
-          variant="destructive"
-          onPress={handleLogout}
-          style={{ marginTop: spacing.xl }}
-        />
-      </ScrollView>
-    </Screen>
+      <Card style={{ marginTop: spacing.lg, backgroundColor: colors.indigoLight }}>
+        <Text style={{ color: colors.indigoDark, fontWeight: '700' }}>Account policy</Text>
+        <Text style={{ color: colors.textSecondary, marginTop: 6 }}>
+          Sarthi does not support account deletion or anonymous account merging.
+        </Text>
+      </Card>
+    </FixedScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-});

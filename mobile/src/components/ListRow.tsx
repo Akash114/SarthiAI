@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { Pressable, View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../theme';
 
 interface ListRowProps {
@@ -10,8 +10,8 @@ interface ListRowProps {
 }
 
 export function ListRow({ label, value, onPress, right }: ListRowProps) {
-  const { colors, spacing } = useTheme();
-  const Wrapper = onPress ? require('react-native').Pressable : View;
+  const { colors } = useTheme();
+  const Wrapper = onPress ? Pressable : View;
 
   return (
     <Wrapper

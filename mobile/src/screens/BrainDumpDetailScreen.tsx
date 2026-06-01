@@ -1,9 +1,9 @@
 import React from 'react';
-import { Text, ScrollView } from 'react-native';
-import { useTheme } from '../theme';
-import { Screen, AppHeader, Card } from '../components';
+import { Text } from 'react-native';
+import { AppHeader, Button, Card, FixedScreen } from '../components';
 import { useBrainDumpDetail } from '../hooks/queries';
 import type { SettingsStackScreenProps } from '../navigation/types';
+import { useTheme } from '../theme';
 
 export function BrainDumpDetailScreen({ navigation, route }: SettingsStackScreenProps<'BrainDumpDetail'>) {
   const { colors, spacing } = useTheme();
@@ -11,32 +11,24 @@ export function BrainDumpDetailScreen({ navigation, route }: SettingsStackScreen
   const { data, isPending } = useBrainDumpDetail(dumpId);
 
   return (
-    <Screen>
-      <AppHeader title="Reflection" onBack={() => navigation.goBack()} />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
-        {isPending ? (
-          <Text style={{ color: colors.textMuted }}>Loading…</Text>
-        ) : data ? (
-          <>
-            <Card style={{ marginBottom: spacing.md }}>
-              <Text style={[{ color: colors.textSecondary, fontSize: 12 }]}>Captured</Text>
-              <Text style={[{ color: colors.textMuted, marginTop: 4 }]}>{new Date(data.created_at).toLocaleString()}</Text>
-              <Text style={[{ color: colors.textMuted, marginTop: 8 }]}>{data.actionable ? 'Marked actionable' : 'Not actionable'}</Text>
-            </Card>
-            <Card style={{ marginBottom: spacing.md }}>
-              <Text style={[{ color: colors.textSecondary, fontSize: 12, marginBottom: spacing.xs }]}>Text</Text>
-              <Text style={[{ color: colors.text }]}>{data.body}</Text>
-            </Card>
-            <Card>
-              <Text style={[{ color: colors.textSecondary, fontSize: 12, marginBottom: spacing.xs }]}>Signals</Text>
-              <Text style={[{ color: colors.textMuted, fontSize: 12 }]}>{JSON.stringify(data.signals, null, 2)}</Text>
-            </Card>
-          </>
-        ) : (
-          <Text style={{ color: colors.textMuted }}>Not found.</Text>
-        )}
-      </ScrollView>
-    </Screen>
+    <FixedScreen
+      header={<AppHeader title="Brain Dump" onBack={() => navigation.goBack()} />}
+      footer={data ? <Button title="Review proposals" onPress={() => navigation.push('BrainDumpReview', { dumpId: data.id })} /> : undefined}
+    >
+      {isPending ? <Text style={{ color: colors.textMuted }}>Loading...</Text> : null}
+      {data ? (
+        <>
+          <Card style={{ marginBottom: spacing.md }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Captured</Text>
+            <Text style={{ color: colors.textMuted, marginTop: 4 }}>{new Date(data.created_at).toLocaleString()}</Text>
+            <Text style={{ color: colors.textMuted, marginTop: 8 }}>{data.processing_status}</Text>
+          </Card>
+          <Card style={{ flex: 1 }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: spacing.xs }}>Text</Text>
+            <Text numberOfLines={10} style={{ color: colors.text }}>{data.body}</Text>
+          </Card>
+        </>
+      ) : null}
+    </FixedScreen>
   );
 }
-

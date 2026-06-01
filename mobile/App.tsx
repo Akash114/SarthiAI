@@ -8,6 +8,8 @@ import { StatusBar } from 'expo-status-bar';
 
 import { SENTRY_DSN, SENTRY_ENVIRONMENT } from './src/config';
 import { initAnalytics } from './src/lib/analytics';
+import { consumeInitialNotificationRoute, registerNotificationTapRouting } from './src/lib/notificationRouting';
+import { rootNavigationRef } from './src/navigation/navigationRef';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ThemeProvider } from './src/theme';
 
@@ -21,7 +23,7 @@ const queryClient = new QueryClient({
   },
 });
 
-export default function App() {
+function AppRoot() {
   useEffect(() => {
     if (SENTRY_DSN) {
       const version = Constants.expoConfig?.version ?? '0.0.0';
@@ -49,13 +51,20 @@ export default function App() {
       });
     }
     void initAnalytics();
+    const cleanupRouting = registerNotificationTapRouting();
+    return cleanupRouting;
   }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <NavigationContainer>
+          <NavigationContainer
+            ref={rootNavigationRef}
+            onReady={() => {
+              void consumeInitialNotificationRoute();
+            }}
+          >
             <StatusBar style="dark" />
             <RootNavigator />
           </NavigationContainer>
@@ -64,3 +73,5 @@ export default function App() {
     </QueryClientProvider>
   );
 }
+
+export default Sentry.wrap(AppRoot);

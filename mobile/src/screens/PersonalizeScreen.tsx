@@ -1,13 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { View, Text, StyleSheet, TextInput } from 'react-native';
 import { useTheme } from '../theme';
-import { Screen, AppHeader, Card, Button, Chip } from '../components';
-import { apiJson } from '../api/client';
-import { captureOnboardingCompleted } from '../lib/analytics';
-import type { CoachingPreferencesPatchRequest, OnboardingPatchRequest } from '../api/types';
-import type { Colors, Spacing } from '../theme/tokens';
+import { FixedScreen, AppHeader, Card, Button, Chip } from '../components';
 import { usePreferences } from '../hooks/queries';
+import { usePatchPreferences } from '../hooks/mutations';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 /** UI index 0 = Monday → API ISO weekday 1 … Sunday → 7 */
@@ -21,17 +17,6 @@ function slotKeyToApi(k: TimeSlot): 'morning' | 'afternoon' | 'evening' {
   return k.toLowerCase() as 'morning' | 'afternoon' | 'evening';
 }
 
-const HALF_HOUR_OPTS: string[] = (() => {
-  const out: string[] = [];
-  for (let h = 6; h <= 22; h++) {
-    for (const m of [0, 30]) {
-      if (h === 22 && m > 0) break;
-      out.push(`${String(h).padStart(2, '0')}:${m === 0 ? '00' : '30'}`);
-    }
-  }
-  return out;
-})();
-
 type PersonalizeNav = {
   navigation: { replace: (screen: string, params?: object) => void; goBack: () => void; push: (screen: string, params?: object) => void };
   route?: { params?: { isOnboarding?: boolean } };
@@ -40,8 +25,6 @@ type PersonalizeNav = {
 export function PersonalizeScreen({ navigation, route }: PersonalizeNav) {
   const { colors, spacing } = useTheme();
   const isOnboarding = (route?.params as { isOnboarding?: boolean } | undefined)?.isOnboarding ?? false;
-  const queryClient = useQueryClient();
-
   const { data: prefs } = usePreferences();
 
   const [workStart, setWorkStart] = useState('09:00');
@@ -73,19 +56,7 @@ export function PersonalizeScreen({ navigation, route }: PersonalizeNav) {
 
   const tz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
-  const patchPrefs = useMutation({
-    mutationFn: (json: Partial<CoachingPreferencesPatchRequest>) =>
-      apiJson('/v1/preferences', { method: 'PATCH', json }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preferences'] }),
-  });
-
-  const patchOnboarding = useMutation({
-    mutationFn: (json: Partial<OnboardingPatchRequest>) => apiJson('/v1/onboarding', { method: 'PATCH', json }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['onboarding'] });
-      captureOnboardingCompleted();
-    },
-  });
+  const patchPrefs = usePatchPreferences();
 
   const toggleDay = (uiIndex: number) => {
     const d = uiIndexToIsoWeekday(uiIndex);
@@ -105,63 +76,69 @@ export function PersonalizeScreen({ navigation, route }: PersonalizeNav) {
       timezone: tz,
     });
     if (isOnboarding) {
-      await patchOnboarding.mutateAsync({ mark_completed: true });
-      navigation.replace('BrainDump', { isOnboarding: true });
+      navigation.replace('OnboardingNotifications');
     } else {
       navigation.goBack();
     }
   };
 
-  const timeChip = (label: string, selected: boolean, onPress: () => void) => (
-    <Chip key={label} label={label} variant="default" selected={selected} onPress={onPress} style={{ marginRight: spacing.xs, marginBottom: spacing.xs }} />
-  );
-
   return (
-    <Screen>
-      <AppHeader title="Design Your Ideal Day" onBack={!isOnboarding ? () => navigation.goBack() : undefined} />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}>
-        <Text style={[styles.heading, { color: colors.text }]}>When do you work?</Text>
-
-        <Card style={{ marginTop: spacing.md }}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Work hours</Text>
-          <Text style={[styles.muted, { color: colors.textSecondary, marginBottom: spacing.sm }]}>Start and end (local time)</Text>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Start</Text>
-          <View style={styles.wrapRow}>{HALF_HOUR_OPTS.map((t) => timeChip(t, workStart === t, () => setWorkStart(t)))}</View>
-          <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.md }]}>End</Text>
-          <View style={styles.wrapRow}>{HALF_HOUR_OPTS.map((t) => timeChip(t, workEnd === t, () => setWorkEnd(t)))}</View>
-        </Card>
-
-        <Card style={{ marginTop: spacing.md }}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Work days</Text>
-          <View style={styles.wrapRow}>
-            {DAY_LABELS.map((day, i) => (
-              <Chip
-                key={day}
-                label={day}
-                variant="default"
-                selected={workDays.includes(uiIndexToIsoWeekday(i))}
-                onPress={() => toggleDay(i)}
-                style={{ marginRight: spacing.xs, marginBottom: spacing.xs }}
-              />
-            ))}
-          </View>
-        </Card>
-
-        <Card style={{ marginTop: spacing.md }}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Personal time</Text>
-          <SlotRow label="Fitness" value={fitnessTime} onChange={setFitnessTime} colors={colors} spacing={spacing} />
-          <SlotRow label="Hobby" value={hobbyTime} onChange={setHobbyTime} colors={colors} spacing={spacing} />
-          <SlotRow label="Admin / chores" value={adminTime} onChange={setAdminTime} colors={colors} spacing={spacing} />
-        </Card>
-
+    <FixedScreen
+      header={<AppHeader title="Design Your Day" onBack={!isOnboarding ? () => navigation.goBack() : undefined} />}
+      footer={
         <Button
+          testID={isOnboarding ? 'onboarding-personalize-continue' : undefined}
           title={isOnboarding ? 'Continue' : 'Save'}
           onPress={onSave}
-          loading={patchPrefs.isPending || patchOnboarding.isPending}
-          style={{ marginTop: spacing.xl }}
+          loading={patchPrefs.isPending}
         />
-      </ScrollView>
-    </Screen>
+      }
+    >
+      <Text style={[styles.heading, { color: colors.text }]}>When do you work?</Text>
+
+      <Card style={{ marginTop: spacing.md }}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Work hours</Text>
+        <View style={[styles.row, { gap: spacing.sm }]}>
+          <TextInput
+            style={[styles.input, { borderColor: colors.border, color: colors.text }]}
+            value={workStart}
+            onChangeText={setWorkStart}
+            placeholder="09:00"
+            placeholderTextColor={colors.textMuted}
+          />
+          <TextInput
+            style={[styles.input, { borderColor: colors.border, color: colors.text }]}
+            value={workEnd}
+            onChangeText={setWorkEnd}
+            placeholder="17:00"
+            placeholderTextColor={colors.textMuted}
+          />
+        </View>
+      </Card>
+
+      <Card style={{ marginTop: spacing.md }}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Work days</Text>
+        <View style={styles.wrapRow}>
+          {DAY_LABELS.map((day, i) => (
+            <Chip
+              key={day}
+              label={day}
+              variant="default"
+              selected={workDays.includes(uiIndexToIsoWeekday(i))}
+              onPress={() => toggleDay(i)}
+              style={{ marginRight: spacing.xs, marginBottom: spacing.xs }}
+            />
+          ))}
+        </View>
+      </Card>
+
+      <Card style={{ marginTop: spacing.md }}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Personal time</Text>
+        <SlotRow label="Fitness" value={fitnessTime} onChange={setFitnessTime} />
+        <SlotRow label="Hobby" value={hobbyTime} onChange={setHobbyTime} />
+        <SlotRow label="Admin" value={adminTime} onChange={setAdminTime} />
+      </Card>
+    </FixedScreen>
   );
 }
 
@@ -169,15 +146,12 @@ function SlotRow({
   label,
   value,
   onChange,
-  colors,
-  spacing,
 }: {
   label: string;
   value: (typeof TIME_SLOTS)[number];
   onChange: (v: (typeof TIME_SLOTS)[number]) => void;
-  colors: Colors;
-  spacing: Spacing;
 }) {
+  const { colors, spacing } = useTheme();
   return (
     <View style={{ marginTop: spacing.md }}>
       <Text style={{ color: colors.textSecondary, marginBottom: spacing.xs }}>{label}</Text>
@@ -193,7 +167,7 @@ function SlotRow({
 const styles = StyleSheet.create({
   heading: { fontSize: 18, fontWeight: '600', marginBottom: 4 },
   cardTitle: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
-  muted: { fontSize: 13 },
-  label: { fontSize: 12, fontWeight: '600', marginBottom: 6 },
   wrapRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  input: { flex: 1, borderWidth: 1, borderRadius: 12, padding: 12 },
 });

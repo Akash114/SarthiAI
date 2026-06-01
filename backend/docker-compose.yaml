@@ -32,6 +32,23 @@ services:
       redis:
         condition: service_healthy
 
+  scheduler:
+    build: .
+    container_name: sarthiai-scheduler
+    restart: unless-stopped
+    command: ["python", "-m", "app.scheduler_main"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/Sarthi
+      REDIS_URL: redis://redis:6379/0
+      SCHEDULER_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   redis:
     image: redis:7-alpine
     container_name: sarthiai-redis

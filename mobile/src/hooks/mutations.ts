@@ -1,36 +1,38 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiJson } from '../api/client';
+import { useSessionStore } from '../state/sessionStore';
 import type {
-  CoachingPreferencesPatchRequest,
-  OnboardingPatchRequest,
-  BrainDumpRequest,
+  AuthGoogleRequest,
+  AuthPasswordLoginRequest,
+  AuthPasswordRegisterRequest,
+  AuthPasswordRegisterResponse,
+  AuthPasswordVerifyRequest,
+  AuthTokenResponse,
+  BrainDumpApplyRequest,
+  BrainDumpApplyResponse,
+  BrainDumpCreateRequest,
   BrainDumpResponse,
-  Resolution,
-  ResolutionCreateRequest,
-  TaskCreateRequest,
-  ResolutionPatchRequest,
-  TaskPatchRequest,
-  FocusSessionCreateRequest,
+  CoachingPreferencesPatchRequest,
   FocusSessionResponse,
-  GenerateWeek1Response,
+  FocusSessionStartRequest,
+  Goal,
+  GoalCreateRequest,
+  GoalPatchRequest,
+  Intervention,
+  ProfilePatchRequest,
+  PushTokenRegisterRequest,
+  Task,
+  TaskCreateRequest,
+  TaskPatchRequest,
+  TeamCreateRequest,
+  TeamCreateResponse,
+  TeamJoinRequest,
+  TeamDetailResponse,
+  UserProfile,
 } from '../api/types';
-import type { Intervention } from '../api/types';
 
 function idempotencyKey(path: string) {
   return `${path}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-export function usePatchOnboarding() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (json: Partial<OnboardingPatchRequest>) =>
-      apiJson('/v1/onboarding', {
-        method: 'PATCH',
-        json,
-        headers: { 'Idempotency-Key': idempotencyKey('/v1/onboarding') },
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['onboarding'] }),
-  });
 }
 
 export function usePatchPreferences() {
@@ -42,38 +44,117 @@ export function usePatchPreferences() {
         json,
         headers: { 'Idempotency-Key': idempotencyKey('/v1/preferences') },
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['preferences'] }),
-  });
-}
-
-export function usePostBrainDump() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (json: BrainDumpRequest) =>
-      apiJson<BrainDumpResponse>('/v1/brain-dump', {
-        method: 'POST',
-        json,
-        headers: { 'Idempotency-Key': idempotencyKey('/v1/brain-dump') },
-      }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['resolution', 'current'] });
-      qc.invalidateQueries({ queryKey: ['brain-dumps'] });
+      qc.invalidateQueries({ queryKey: ['preferences'] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 }
 
-export function useCreateResolution() {
+export function usePatchProfile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (json: ResolutionCreateRequest) =>
-      apiJson<Resolution>('/v1/resolutions', {
+    mutationFn: (json: ProfilePatchRequest) => apiJson<UserProfile>('/v1/me', { method: 'PATCH', json }),
+    onSuccess: (user) => {
+      useSessionStore.getState().setUser(user);
+      qc.invalidateQueries({ queryKey: ['me'] });
+    },
+  });
+}
+
+export function usePasswordRegister() {
+  return useMutation({
+    mutationFn: (json: AuthPasswordRegisterRequest) =>
+      apiJson<AuthPasswordRegisterResponse>('/v1/auth/password/register', { method: 'POST', json }),
+  });
+}
+
+export function usePasswordVerify() {
+  return useMutation({
+    mutationFn: (json: AuthPasswordVerifyRequest) =>
+      apiJson<AuthTokenResponse>('/v1/auth/password/verify', { method: 'POST', json }),
+  });
+}
+
+export function usePasswordLogin() {
+  return useMutation({
+    mutationFn: (json: AuthPasswordLoginRequest) =>
+      apiJson<AuthTokenResponse>('/v1/auth/password/login', { method: 'POST', json }),
+  });
+}
+
+export function useGoogleLogin() {
+  return useMutation({
+    mutationFn: (json: AuthGoogleRequest) => apiJson<AuthTokenResponse>('/v1/auth/google', { method: 'POST', json }),
+  });
+}
+
+export function usePostBrainDump(focusSessionId?: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (json: BrainDumpCreateRequest) =>
+      apiJson<BrainDumpResponse>(focusSessionId ? `/v1/focus-sessions/${focusSessionId}/brain-dumps` : '/v1/brain-dumps', {
         method: 'POST',
         json,
-        headers: { 'Idempotency-Key': idempotencyKey('/v1/resolutions') },
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['resolution'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['brain-dumps'] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['goals'] });
+    },
+  });
+}
+
+export function useApplyBrainDump(dumpId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (json: BrainDumpApplyRequest) =>
+      apiJson<BrainDumpApplyResponse>(`/v1/brain-dumps/${dumpId}/apply`, {
+        method: 'POST',
+        json,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['goals'] });
+      qc.invalidateQueries({ queryKey: ['brain-dump', dumpId] });
+      qc.invalidateQueries({ queryKey: ['transparency'] });
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+export function useCreateGoal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (json: GoalCreateRequest) =>
+      apiJson<Goal>('/v1/goals', {
+        method: 'POST',
+        json,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['goals'] });
+    },
+  });
+}
+
+export function usePatchGoal(goalId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (json: GoalPatchRequest) => apiJson<Goal>(`/v1/goals/${goalId}`, { method: 'PATCH', json }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['goals'] });
+      qc.invalidateQueries({ queryKey: ['goal', goalId] });
+    },
+  });
+}
+
+export function useCompleteGoal(goalId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiJson<Goal>(`/v1/goals/${goalId}/complete`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['goals'] });
+      qc.invalidateQueries({ queryKey: ['goal', goalId] });
     },
   });
 }
@@ -82,122 +163,40 @@ export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (json: TaskCreateRequest) =>
-      apiJson<{ id: string }>('/v1/tasks', {
+      apiJson<Task>('/v1/tasks', {
         method: 'POST',
         json,
-        headers: { 'Idempotency-Key': idempotencyKey('/v1/tasks') },
       }),
-    onSuccess: () => {
+    onSuccess: (task) => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
-      qc.invalidateQueries({ queryKey: ['journey'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      qc.invalidateQueries({ queryKey: ['resolution', 'current'] });
+      qc.invalidateQueries({ queryKey: ['shared-tasks', task.team_id ?? ''] });
+      if (task.goal_id) qc.invalidateQueries({ queryKey: ['goal-tasks', task.goal_id] });
     },
-  });
-}
-
-export function usePatchResolution(resolutionId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (json: ResolutionPatchRequest) =>
-      apiJson(`/v1/resolutions/${resolutionId}`, {
-        method: 'PATCH',
-        json,
-        headers: { 'Idempotency-Key': idempotencyKey(`/v1/resolutions/${resolutionId}`) },
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['resolution', resolutionId] });
-      qc.invalidateQueries({ queryKey: ['resolution', 'current'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-    },
-  });
-}
-
-export function useGenerateWeek1(resolutionId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      apiJson<GenerateWeek1Response>(`/v1/resolutions/${resolutionId}/generate-week-1`, {
-        method: 'POST',
-        headers: { 'Idempotency-Key': idempotencyKey(`/v1/resolutions/${resolutionId}/generate-week-1`) },
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['resolution', resolutionId] });
-      qc.invalidateQueries({ queryKey: ['resolution', 'current'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-    },
-  });
-}
-
-export function usePreviewWeek1(resolutionId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      apiJson<{ snapshot_id: string }>(`/v1/resolutions/${resolutionId}/week-1/preview`, {
-        method: 'POST',
-        headers: { 'Idempotency-Key': idempotencyKey(`/v1/resolutions/${resolutionId}/week-1/preview`) },
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['week1-preview', resolutionId] }),
   });
 }
 
 export function useCompleteTask(taskId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      apiJson(`/v1/tasks/${taskId}/complete`, {
-        method: 'POST',
-        headers: { 'Idempotency-Key': idempotencyKey(`/v1/tasks/${taskId}/complete`) },
-      }),
-    onSuccess: () => {
+    mutationFn: () => apiJson<Task>(`/v1/tasks/${taskId}/complete`, { method: 'POST' }),
+    onSuccess: (task) => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      qc.invalidateQueries({ queryKey: ['journey'] });
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      if (task.goal_id) qc.invalidateQueries({ queryKey: ['goal-tasks', task.goal_id] });
     },
   });
 }
 
-/** Complete any task by id (e.g. list rows where hook-per-id is awkward). */
 export function useCompleteTaskById() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (taskId: string) =>
-      apiJson(`/v1/tasks/${taskId}/complete`, {
-        method: 'POST',
-        headers: { 'Idempotency-Key': idempotencyKey(`/v1/tasks/${taskId}/complete`) },
-      }),
-    onSuccess: () => {
+    mutationFn: (taskId: string) => apiJson<Task>(`/v1/tasks/${taskId}/complete`, { method: 'POST' }),
+    onSuccess: (task) => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      qc.invalidateQueries({ queryKey: ['journey'] });
+      qc.invalidateQueries({ queryKey: ['task', task.id] });
+      if (task.goal_id) qc.invalidateQueries({ queryKey: ['goal-tasks', task.goal_id] });
     },
-  });
-}
-
-export function useSkipTaskById() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (taskId: string) =>
-      apiJson(`/v1/tasks/${taskId}/skip`, {
-        method: 'POST',
-        headers: { 'Idempotency-Key': idempotencyKey(`/v1/tasks/${taskId}/skip`) },
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      qc.invalidateQueries({ queryKey: ['journey'] });
-    },
-  });
-}
-
-export function useStartFocusSession() {
-  return useMutation({
-    mutationFn: (json: FocusSessionCreateRequest) =>
-      apiJson<FocusSessionResponse>('/v1/focus-sessions', {
-        method: 'POST',
-        json,
-        headers: { 'Idempotency-Key': idempotencyKey('/v1/focus-sessions') },
-      }),
   });
 }
 
@@ -205,45 +204,64 @@ export function usePatchTask(taskId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (json: TaskPatchRequest) =>
-      apiJson(`/v1/tasks/${taskId}`, {
+      apiJson<Task>(`/v1/tasks/${taskId}`, {
         method: 'PATCH',
         json,
-        headers: { 'Idempotency-Key': idempotencyKey(`/v1/tasks/${taskId}`) },
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
-  });
-}
-
-export function useApproveIntervention(interventionId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      apiJson<Intervention>(`/v1/interventions/${interventionId}/approve`, {
-        method: 'POST',
-        headers: { 'Idempotency-Key': idempotencyKey(`/v1/interventions/${interventionId}/approve`) },
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['intervention'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    onSuccess: (task) => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      if (task.goal_id) qc.invalidateQueries({ queryKey: ['goal-tasks', task.goal_id] });
     },
   });
 }
 
-export function useDismissIntervention(interventionId: string) {
+export function useReopenTask(taskId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiJson<Task>(`/v1/tasks/${taskId}/reopen`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  });
+}
+
+export function useStartFocusSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (json: FocusSessionStartRequest) =>
+      apiJson<FocusSessionResponse>('/v1/focus-sessions/start', { method: 'POST', json }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['focus-session', 'active'] }),
+  });
+}
+
+export function useEndFocusSession(sessionId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiJson<Intervention>(`/v1/interventions/${interventionId}/dismiss`, {
+      apiJson<FocusSessionResponse>(`/v1/focus-sessions/${sessionId}/end`, {
         method: 'POST',
-        headers: { 'Idempotency-Key': idempotencyKey(`/v1/interventions/${interventionId}/dismiss`) },
+        json: {},
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['intervention'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['focus-session', 'active'] }),
+  });
+}
+
+export function useResolveIntervention(interventionId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => {
+      if (!interventionId) throw new Error('No intervention to resolve');
+      return apiJson<Intervention>(`/v1/interventions/${interventionId}/resolve`, { method: 'POST' });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['interventions'] });
+      qc.invalidateQueries({ queryKey: ['transparency'] });
+    },
   });
 }
 
 export function useRegisterPushToken() {
   return useMutation({
-    mutationFn: (json: { expo_push_token: string; platform: 'android' | 'ios'; device_id?: string }) =>
+    mutationFn: (json: PushTokenRegisterRequest) =>
       apiJson('/v1/devices/push-token', {
         method: 'POST',
         json,
@@ -252,20 +270,49 @@ export function useRegisterPushToken() {
   });
 }
 
-export function useMergeAnonymous() {
+export function useCreateTeam() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (anonymous_user_id: string) =>
-      apiJson<{ merged: boolean; message: string }>('/v1/auth/merge-anonymous', {
+    mutationFn: (json: TeamCreateRequest) =>
+      apiJson<TeamCreateResponse>('/v1/teams', {
         method: 'POST',
-        json: { anonymous_user_id },
-        headers: { 'Idempotency-Key': idempotencyKey('/v1/auth/merge-anonymous') },
+        json,
+        headers: { 'Idempotency-Key': idempotencyKey('/v1/teams') },
       }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['teams'] }),
+  });
+}
+
+export function useJoinTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (json: TeamJoinRequest) =>
+      apiJson<TeamDetailResponse>('/v1/teams/join', {
+        method: 'POST',
+        json,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['teams'] }),
+  });
+}
+
+export function useLeaveTeam(teamId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiJson(`/v1/teams/${teamId}/leave`, { method: 'POST' }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['me'] });
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      qc.invalidateQueries({ queryKey: ['resolution'] });
-      qc.invalidateQueries({ queryKey: ['preferences'] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
+      qc.invalidateQueries({ queryKey: ['team', teamId] });
+    },
+  });
+}
+
+export function useDeleteTeam(teamId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiJson(`/v1/teams/${teamId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['teams'] });
+      qc.removeQueries({ queryKey: ['team', teamId] });
     },
   });
 }
