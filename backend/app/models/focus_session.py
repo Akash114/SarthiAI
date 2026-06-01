@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -18,3 +18,4 @@ class FocusSession(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     planned_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    context_snapshot_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
