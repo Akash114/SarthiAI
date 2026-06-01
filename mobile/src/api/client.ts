@@ -1,12 +1,8 @@
 import { API_BASE_URL } from '../config';
 import { useSessionStore } from '../state/sessionStore';
+import type { AuthTokenResponse } from './types';
 
-export type AuthTokenResponse = {
-  access_token: string;
-  refresh_token: string;
-  access_expires_at: string;
-  refresh_expires_at: string;
-};
+export type { AuthTokenResponse } from './types';
 
 const FETCH_TIMEOUT_MS = 20_000;
 
@@ -38,7 +34,8 @@ async function fetchWithTimeout(
   }
 }
 
-async function refreshAccess(): Promise<boolean> {
+/** Restore access token from the stored refresh token (app cold start). */
+export async function restoreSessionFromRefresh(): Promise<boolean> {
   const refresh = await useSessionStore.getState().readRefreshToken();
   if (!refresh) return false;
   try {
@@ -50,11 +47,16 @@ async function refreshAccess(): Promise<boolean> {
     if (!res.ok) return false;
     const j = (await res.json()) as AuthTokenResponse;
     useSessionStore.getState().setAccessToken(j.access_token);
+    useSessionStore.getState().setUser(j.user);
     await useSessionStore.getState().saveRefreshToken(j.refresh_token);
     return true;
   } catch {
     return false;
   }
+}
+
+async function refreshAccess(): Promise<boolean> {
+  return restoreSessionFromRefresh();
 }
 
 export async function apiJson<T>(
@@ -86,5 +88,6 @@ export async function apiJson<T>(
     data = { raw: text };
   }
   if (!res.ok) throw new ApiError(res.status, data);
+  if (res.status === 204) return undefined as T;
   return data as T;
 }
