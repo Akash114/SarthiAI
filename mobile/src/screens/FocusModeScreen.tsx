@@ -1,114 +1,94 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
-import { useTheme } from '../theme';
-import { Screen, AppHeader, Button, Card } from '../components';
+import { Alert, StyleSheet, Text, View } from 'react-native';
+import { AppHeader, Button, Card, FixedScreen } from '../components';
 import { apiJson } from '../api/client';
+import { useActiveFocusSession } from '../hooks/queries';
 import { useCompleteTask, useStartFocusSession } from '../hooks/mutations';
+import type { FocusSessionResponse } from '../api/types';
 import type { HomeStackScreenProps } from '../navigation/types';
+import { useTheme } from '../theme';
 
 export function FocusModeScreen({ navigation, route }: HomeStackScreenProps<'FocusMode'>) {
-  const { colors, spacing } = useTheme();
-  const { taskId, taskTitle, durationMinutes = 10 } = route.params;
-  const { mutate: completeTask } = useCompleteTask(taskId);
+  const { colors, spacing, typography } = useTheme();
+  const { taskId, taskTitle } = route.params;
   const startSession = useStartFocusSession();
-  const sessionIdRef = useRef<string | null>(null);
+  const completeTask = useCompleteTask(taskId ?? '');
+  const { data: activeFocus } = useActiveFocusSession();
+  const sessionRef = useRef<string | null>(null);
   const endedRef = useRef(false);
-
-  const [seconds, setSeconds] = useState(durationMinutes * 60);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const planned = durationMinutes * 60;
+    if (activeFocus?.id) {
+      sessionRef.current = activeFocus.id;
+      setReady(true);
+      return;
+    }
     startSession.mutate(
-      { task_id: taskId, planned_seconds: planned },
+      { task_id: taskId ?? null },
       {
-        onSuccess: (res) => {
-          sessionIdRef.current = res.id;
+        onSuccess: (session) => {
+          sessionRef.current = session.id;
+          setReady(true);
         },
+        onError: () => setReady(true),
       },
     );
-    return () => {
-      const sid = sessionIdRef.current;
-      if (!sid || endedRef.current) return;
-      void apiJson(`/v1/focus-sessions/${sid}`, { method: 'PATCH', json: {} }).catch(() => {});
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- start once per mount
-  }, [taskId, durationMinutes]);
-
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      setSeconds((s) => {
-        if (s <= 1) {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    // start focus once for this screen entry
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const endFocusSessionRemote = () => {
-    const sid = sessionIdRef.current;
-    if (sid && !endedRef.current) {
-      endedRef.current = true;
-      void apiJson(`/v1/focus-sessions/${sid}`, { method: 'PATCH', json: {} }).catch(() => {});
+  const endSession = async () => {
+    const sessionId = sessionRef.current;
+    if (!sessionId || endedRef.current) {
+      navigation.goBack();
+      return;
+    }
+    endedRef.current = true;
+    try {
+      const ended = await apiJson<FocusSessionResponse>(`/v1/focus-sessions/${sessionId}/end`, {
+        method: 'POST',
+        json: {},
+      });
+      if (taskId) completeTask.mutate();
+      const minutes = Math.max(1, Math.round(ended.elapsed_seconds / 60));
+      Alert.alert('Focus complete', `You spent ${minutes} min in focus.`, [{ text: 'Done', onPress: () => navigation.goBack() }]);
+    } catch (e) {
+      Alert.alert('Could not end focus', e instanceof Error ? e.message : 'Try again.');
     }
   };
 
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-
   return (
-    <Screen>
-      <AppHeader title="Focus Mode" onBack={() => navigation.goBack()} />
-      <View style={[styles.root, { padding: spacing.lg, backgroundColor: colors.background }]}>
+    <FixedScreen
+      header={<AppHeader title="Focus Mode" onBack={endSession} />}
+      footer={
+        <View style={{ gap: spacing.sm }}>
+          <Button
+            title="Save a brain dump"
+            variant="ghost"
+            onPress={() => navigation.push('BrainDumpModal', { focusSessionId: sessionRef.current ?? undefined, taskId })}
+          />
+          <Button title="End session" onPress={endSession} />
+        </View>
+      }
+    >
+      <View style={styles.center}>
         <Text style={{ fontSize: 11, letterSpacing: 1, color: colors.textMuted, textAlign: 'center' }}>FOCUS COMPANION</Text>
         <Card style={{ alignItems: 'center', padding: spacing.xl, marginTop: spacing.md }}>
-          <Text style={[styles.taskTitle, { color: colors.text }]}>{taskTitle}</Text>
-          <Text style={[{ color: colors.textSecondary, marginBottom: spacing.md }]}>Quiet mode enabled</Text>
-          <View style={[styles.timerWrap, { backgroundColor: colors.indigo }]}>
-            <Text style={styles.timer}>
-              {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
-            </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 4 }}>
-              {Math.floor((durationMinutes * 60 - seconds) / 60)}m in · {seconds}s left
-            </Text>
-          </View>
+          <Text numberOfLines={3} style={[typography.title, { color: colors.text, textAlign: 'center' }]}>
+            {taskTitle ?? 'Open-ended focus'}
+          </Text>
+          <Text style={{ color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center' }}>
+            {ready ? 'Timer hidden. Stay with the work.' : 'Preparing your focus session...'}
+          </Text>
+          <View style={[styles.orb, { backgroundColor: colors.indigoLight, borderColor: colors.indigo }]} />
         </Card>
-
-        <Button
-          title="Save a thought"
-          variant="ghost"
-          onPress={() => navigation.push('BrainDumpModal', {})}
-          style={{ marginTop: spacing.lg }}
-        />
-        <Button
-          title="Open insights"
-          variant="ghost"
-          onPress={() => Alert.alert('Insights', 'Coming soon.')}
-          style={{ marginTop: spacing.sm }}
-        />
-        <Button
-          title="End session"
-          variant="primary"
-          onPress={() => {
-            endFocusSessionRemote();
-            completeTask();
-            navigation.goBack();
-          }}
-          style={{ marginTop: spacing.md }}
-        />
       </View>
-    </Screen>
+    </FixedScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  taskTitle: { fontSize: 20, fontWeight: '700', marginBottom: 8, textAlign: 'center' },
-  timerWrap: { width: '100%', borderRadius: 20, paddingVertical: 24, paddingHorizontal: 16, alignItems: 'center' },
-  timer: { fontSize: 48, fontWeight: '300', color: '#FFFFFF' },
+  center: { flex: 1, justifyContent: 'center' },
+  orb: { width: 120, height: 120, borderRadius: 60, borderWidth: 2, marginTop: 28 },
 });

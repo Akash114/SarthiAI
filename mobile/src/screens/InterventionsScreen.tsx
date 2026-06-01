@@ -1,119 +1,76 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { AppHeader, Button, Card, FixedScreen } from '../components';
+import { useResolveIntervention } from '../hooks/mutations';
+import { useInterventions, useNotifications, useTransparency } from '../hooks/queries';
+import { companionNotificationToRouteData } from '../lib/notificationNavigation';
+import { routeFromNotificationData } from '../lib/notificationRouting';
+import type { ActivityStackScreenProps } from '../navigation/types';
 import { useTheme } from '../theme';
-import { Screen, AppHeader, Card, Chip } from '../components';
-import { useCurrentIntervention, useDashboard, useWeek1Tasks } from '../hooks/queries';
-import { useApproveIntervention, useDismissIntervention } from '../hooks/mutations';
-import type { InterventionsStackScreenProps } from '../navigation/types';
 
-export function InterventionsScreen({ navigation }: InterventionsStackScreenProps<'Interventions'>) {
+export function InterventionsScreen({ navigation }: ActivityStackScreenProps<'Activity'>) {
   const { colors, spacing } = useTheme();
-  const { data: intervention } = useCurrentIntervention();
-  const { data: dashboard } = useDashboard();
-
-  const approveMutation = useApproveIntervention(intervention?.id ?? '');
-  const dismissMutation = useDismissIntervention(intervention?.id ?? '');
+  const { data: interventions } = useInterventions('pending');
+  const { data: notifications } = useNotifications(5);
+  const { data: transparency } = useTransparency({ limit: 3 });
+  const intervention = interventions?.interventions?.[0];
+  const resolve = useResolveIntervention(intervention?.id);
 
   return (
-    <Screen>
-      <AppHeader
-        title="Interventions"
-        right={
-          <Pressable onPress={() => navigation.push('InterventionsHistory')}>
-            <Text style={[{ color: colors.indigo }]}>History</Text>
-          </Pressable>
-        }
-      />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
-        {/* Slippage detected banner */}
-        {dashboard?.pending_intervention && (
-          <Card style={{ backgroundColor: colors.warningLight, marginBottom: spacing.lg }}>
-            <Text style={[{ color: colors.warning, fontWeight: '600' }]}>Slippage detected</Text>
-            <Text style={[{ color: colors.warning, marginTop: 4 }]}>
-              Some tasks are running behind schedule.
-            </Text>
-          </Card>
-        )}
-
-        {/* Agent Suggestion */}
-        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: spacing.sm }]}>
-          Agent Suggestion
+    <FixedScreen
+      header={<AppHeader title="Activity" />}
+      footer={
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <Button title="History" variant="ghost" onPress={() => navigation.push('InterventionsHistory')} style={{ flex: 1 }} />
+          <Button title="Transparency" onPress={() => navigation.push('TransparencyLog')} style={{ flex: 1 }} />
+        </View>
+      }
+    >
+      <Card style={{ backgroundColor: intervention ? colors.warningLight : colors.indigoLight }}>
+        <Text style={{ color: intervention ? colors.warning : colors.indigoDark, fontWeight: '700' }}>
+          {intervention ? 'Intervention needed' : 'No serious intervention'}
+        </Text>
+        <Text numberOfLines={3} style={{ color: colors.text, marginTop: 6 }}>
+          {intervention?.summary ?? 'Sarthi will surface serious prompts here when a goal or task needs attention.'}
         </Text>
         {intervention ? (
-          <Card style={{ marginBottom: spacing.md }}>
-            <Text style={[{ color: colors.text }]}>{intervention.summary}</Text>
-            {(() => {
-              const extra = intervention.detail_json as { body?: string; bullets?: string[] } | null | undefined;
-              if (!extra) return null;
-              if (extra.body) {
-                return (
-                  <Text style={[{ color: colors.textSecondary, marginTop: spacing.sm, fontSize: 14 }]}>{extra.body}</Text>
-                );
-              }
-              if (Array.isArray(extra.bullets) && extra.bullets.length > 0) {
-                return (
-                  <View style={{ marginTop: spacing.sm }}>
-                    {extra.bullets.map((b) => (
-                      <Text key={b} style={{ color: colors.textSecondary, fontSize: 14, marginBottom: 4 }}>
-                        • {b}
-                      </Text>
-                    ))}
-                  </View>
-                );
-              }
-              return null;
-            })()}
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: spacing.md }}>
-              <Pressable
-                testID="btn-approve-intervention"
-                onPress={() => approveMutation.mutate()}
-                style={[styles.actionBtn, { backgroundColor: colors.indigo }]}
-              >
-                <Text style={[{ color: colors.white, fontWeight: '600' }]}>Try this</Text>
-              </Pressable>
-              <Pressable
-                testID="btn-dismiss-intervention"
-                onPress={() => dismissMutation.mutate()}
-                style={[styles.actionBtn, { borderColor: colors.border, borderWidth: 1 }]}
-              >
-                <Text style={[{ color: colors.text }]}>Dismiss</Text>
-              </Pressable>
-            </View>
-          </Card>
-        ) : (
-          <Card style={{ marginBottom: spacing.md }}>
-            <Text style={[{ color: colors.textMuted }]}>No intervention pending. Check back after your daily review.</Text>
-          </Card>
-        )}
+          <Button title="Resolve" onPress={() => resolve.mutate()} loading={resolve.isPending} style={{ marginTop: spacing.md }} />
+        ) : null}
+      </Card>
 
-        {/* Fallback static suggestions (shown in __DEV__ or when backend only provides one) */}
-        {__DEV__ && (
-          <>
-            <Card style={{ marginBottom: spacing.sm }}>
-              <Text style={[{ color: colors.text, fontWeight: '600' }]}>Refine Your Goals</Text>
-              <Text style={[{ color: colors.textSecondary, fontSize: 13 }]}>
-                Consider updating your resolution to better match your capacity.
+      <View style={{ marginTop: spacing.md }}>
+        <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>RECENT NOTIFICATIONS</Text>
+        {(notifications?.notifications ?? []).slice(0, 3).map((item) => (
+          <Pressable
+            key={item.id}
+            onPress={() => routeFromNotificationData(companionNotificationToRouteData(item))}
+            style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
+          >
+            <Card padding="sm" style={{ marginTop: spacing.sm }}>
+              <Text numberOfLines={1} style={{ color: colors.text, fontWeight: '700' }}>
+                {item.title}
+              </Text>
+              <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 12 }}>
+                {item.kind}
               </Text>
             </Card>
-            <Card>
-              <Text style={[{ color: colors.text, fontWeight: '600' }]}>Take a Break</Text>
-              <Text style={[{ color: colors.textSecondary, fontSize: 13 }]}>
-                Rest is part of the plan. Schedule a short break before your next task block.
-              </Text>
-            </Card>
-          </>
-        )}
+          </Pressable>
+        ))}
+      </View>
 
-        {/* Transparency log link */}
-        <Pressable testID="btn-transparency-log" onPress={() => navigation.push('TransparencyLog')}>
-          <Text style={[{ color: colors.indigo, marginTop: spacing.lg }]}>View Transparency Log</Text>
-        </Pressable>
-      </ScrollView>
-    </Screen>
+      <View style={{ flex: 1, marginTop: spacing.md }}>
+        <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>TRANSPARENCY</Text>
+        {(transparency?.items ?? []).slice(0, 2).map((item) => (
+          <Card key={item.id} padding="sm" style={{ marginTop: spacing.sm }}>
+            <Text numberOfLines={1} style={{ color: colors.text, fontWeight: '700' }}>
+              {item.headline}
+            </Text>
+            <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 12 }}>
+              {item.action_type}
+            </Text>
+          </Card>
+        ))}
+      </View>
+    </FixedScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  sectionTitle: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  actionBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
-});

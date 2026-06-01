@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, Alert } from 'react-native';
-import { useMutation } from '@tanstack/react-query';
 import { useTheme } from '../theme';
-import { Screen, AppHeader, Button } from '../components';
-import { apiJson } from '../api/client';
-import type { BrainDumpRequest, BrainDumpResponse } from '../api/types';
+import { FixedScreen, AppHeader, Button } from '../components';
+import { usePostBrainDump } from '../hooks/mutations';
 
 type BrainDumpNav = {
   navigate: (screen: string, params?: object) => void;
+  replace: (screen: string, params?: object) => void;
   goBack: () => void;
   getParent?: () =>
     | {
@@ -16,44 +15,59 @@ type BrainDumpNav = {
     | undefined;
 };
 
-export function BrainDumpScreen({ navigation, route }: { navigation: BrainDumpNav; route?: { params?: { isOnboarding?: boolean } } }) {
+export function BrainDumpScreen({
+  navigation,
+  route,
+}: {
+  navigation: BrainDumpNav;
+  route?: { params?: { focusSessionId?: string; taskId?: string; goalId?: string; teamId?: string } };
+}) {
   const { colors, spacing } = useTheme();
-  const isOnboarding = route?.params?.isOnboarding ?? false;
   const [text, setText] = useState('');
-  const MAX = 2000;
+  const MAX = 20000;
 
-  const mutation = useMutation({
-    mutationFn: (json: BrainDumpRequest) =>
-      apiJson<BrainDumpResponse>('/v1/brain-dump', { method: 'POST', json }),
-    onSuccess: (data) => {
-      if (isOnboarding) {
-        navigation.navigate('PlanReview', { isOnboarding: true });
-        return;
-      }
-      const sigPreview = JSON.stringify(data.signals, null, 2).slice(0, 1200);
-      Alert.alert(
-        data.actionable ? 'Reflection — actionable' : 'Reflection captured',
-        sigPreview + (sigPreview.length >= 1200 ? '\n…' : ''),
-        [
-          { text: 'OK' },
-          {
-            text: 'History',
-            onPress: () => {
-              const tab = navigation.getParent?.()?.getParent?.();
-              tab?.navigate('SettingsTab', { screen: 'BrainDumpHistory' });
-            },
-          },
-        ],
-      );
-    },
-  });
+  const mutation = usePostBrainDump(route?.params?.focusSessionId);
+
+  const onSuccess = (data: { id: string }) => {
+    Alert.alert('Brain dump captured', 'Sarthi is turning this into proposals.', [
+      {
+        text: 'Review',
+        onPress: () => navigation.replace('BrainDumpReview', { dumpId: data.id }),
+      },
+      {
+        text: 'Later',
+        onPress: () => navigation.goBack(),
+      },
+    ]);
+  };
 
   return (
-    <Screen>
-      <AppHeader title="Brain Dump" onBack={() => navigation.goBack()} />
+    <FixedScreen
+      header={<AppHeader title="Brain Dump" onBack={() => navigation.goBack()} />}
+      footer={
+        <Button
+          title="Analyze"
+          onPress={() => {
+            if (!text.trim()) return;
+            mutation.mutate(
+              {
+                text,
+                focus_session_id: route?.params?.focusSessionId,
+                task_id: route?.params?.taskId,
+                goal_id: route?.params?.goalId,
+                team_id: route?.params?.teamId,
+              },
+              { onSuccess },
+            );
+          }}
+          loading={mutation.isPending}
+          testID="braindump-submit-btn"
+        />
+      }
+    >
       <View style={[styles.root, { padding: spacing.lg }]}>
         <Text style={[{ color: colors.text, fontSize: 15, marginBottom: spacing.md }]}>
-          What's on your mind? Capture everything — we'll extract what matters.
+          What is on your mind? Capture everything, then Sarthi will extract what matters.
         </Text>
         <TextInput
           testID="braindump-input"
@@ -68,18 +82,8 @@ export function BrainDumpScreen({ navigation, route }: { navigation: BrainDumpNa
         <Text style={[{ color: colors.textMuted, textAlign: 'right', fontSize: 12 }]}>
           {text.length}/{MAX}
         </Text>
-        <Button
-          title="Analyze Signal"
-          onPress={() => {
-            if (!text.trim()) return;
-            mutation.mutate({ text });
-          }}
-          loading={mutation.isPending}
-          style={{ marginTop: spacing.lg }}
-          testID="braindump-submit-btn"
-        />
       </View>
-    </Screen>
+    </FixedScreen>
   );
 }
 
