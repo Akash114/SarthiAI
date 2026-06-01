@@ -1,38 +1,36 @@
 from __future__ import annotations
 
-import base64
-import json
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from posthog import identify_context, new_context
-
 from app.api.exceptions import ApiError
-from app.api.v1.deps import _rid, current_user, current_user_id, get_posthog
+from app.api.v1.cursor_pagination import decode_cursor, encode_cursor
+from app.api.v1.deps import _rid, current_user_id
+from app.config import get_settings
 from app.db import get_db
-from app.jobs.week1 import run_generate_week1
-from app.models.intervention import Intervention as InterventionORM
-from app.models.resolution import Resolution as ResolutionORM
-from app.models.task import Task as TaskORM
-from app.models.transparency import TransparencyEntry as TransparencyORM
-from app.models.user import User
+from app.services.notifications.expo import send_expo_push_batch
+from app.models.companion_notification import CompanionNotification as NotificationORM
 from app.models.device_push import DevicePushToken
-from app.observability.trace_http import traceparent_from_context
-from app.queue import task_queue
+from app.models.goal import Goal as GoalORM
+from app.models.intervention import Intervention as InterventionORM
+from app.models.task import Task as TaskORM
+from app.models.team_member import TeamMember as TeamMemberORM
+from app.models.transparency import TransparencyEntry as TransparencyORM
 from app.schemas.api import (
-    GenerateWeek1Response,
+    CompanionNotification,
+    CompanionNotificationListResponse,
+    Goal,
+    GoalCreateRequest,
+    GoalListResponse,
+    GoalPatchRequest,
     Intervention,
-    InterventionCurrentResponse,
+    InterventionListResponse,
     PushTokenRegisterRequest,
-    Resolution,
-    ResolutionCreateRequest,
-    ResolutionCurrentResponse,
-    ResolutionPatchRequest,
     Task,
     TaskCreateRequest,
     TaskListResponse,
@@ -40,751 +38,541 @@ from app.schemas.api import (
     TransparencyEntry,
     TransparencyLogPage,
 )
-from app.services.idempotency import replay_if_exists, store
 
-router = APIRouter(tags=["resolutions", "tasks", "interventions", "transparency", "devices"])
-
-
-def _resolution_out(r: ResolutionORM) -> Resolution:
-    return Resolution.model_validate(r)
+router = APIRouter(tags=["goals", "tasks", "notifications", "interventions", "transparency", "devices"])
 
 
-def _active_resolution(db: Session, user_id: UUID) -> ResolutionORM | None:
-    return db.scalars(
-        select(ResolutionORM)
-        .where(
-            ResolutionORM.user_id == user_id,
-            ResolutionORM.status.in_(("draft", "active")),
-        )
-        .order_by(ResolutionORM.created_at.desc())
-    ).first()
+def _ensure_team_member(db: Session, team_id: UUID, user_id: UUID, rid: str) -> TeamMemberORM:
+    member = db.get(TeamMemberORM, {"team_id": team_id, "user_id": user_id})
+    if member is None:
+        raise ApiError(403, code="forbidden", message="Not a team member", request_id=rid)
+    return member
 
 
-@router.get("/resolutions/current", response_model=ResolutionCurrentResponse)
-def resolutions_current(
+def _goal_out(goal: GoalORM) -> Goal:
+    return Goal(
+        id=goal.id,
+        owner_type="team" if goal.team_id else "user",
+        user_id=goal.user_id,
+        team_id=goal.team_id,
+        created_by_user_id=goal.created_by_user_id,
+        title=goal.title,
+        description=goal.description,
+        status=goal.status,
+        target_at=goal.target_at,
+        progress_summary=goal.progress_summary,
+        metadata_json=goal.metadata_json,
+        created_at=goal.created_at,
+        updated_at=goal.updated_at,
+        completed_at=goal.completed_at,
+    )
+
+
+def _task_out(task: TaskORM) -> Task:
+    return Task(
+        id=task.id,
+        owner_type="team" if task.team_id else "user",
+        user_id=task.user_id,
+        team_id=task.team_id,
+        goal_id=task.goal_id,
+        created_by_user_id=task.created_by_user_id,
+        assignee_user_id=task.assignee_user_id,
+        completed_by_user_id=task.completed_by_user_id,
+        title=task.title,
+        notes=task.notes,
+        status=task.status,
+        priority=task.priority,
+        sort_order=task.sort_order,
+        due_at=task.due_at,
+        due_window_starts_at=task.due_window_starts_at,
+        due_window_ends_at=task.due_window_ends_at,
+        completed_at=task.completed_at,
+        source=task.source,
+        metadata_json=task.metadata_json,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+    )
+
+
+def _get_goal_for_user(db: Session, goal_id: UUID, user_id: UUID, rid: str) -> GoalORM:
+    goal = db.get(GoalORM, goal_id)
+    if goal is None:
+        raise ApiError(404, code="not_found", message="Goal not found", request_id=rid)
+    if goal.user_id == user_id:
+        return goal
+    if goal.team_id is not None:
+        _ensure_team_member(db, goal.team_id, user_id, rid)
+        return goal
+    raise ApiError(404, code="not_found", message="Goal not found", request_id=rid)
+
+
+def _get_task_for_user(db: Session, task_id: UUID, user_id: UUID, rid: str) -> TaskORM:
+    task = db.get(TaskORM, task_id)
+    if task is None:
+        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
+    if task.user_id == user_id:
+        return task
+    if task.team_id is not None:
+        _ensure_team_member(db, task.team_id, user_id, rid)
+        return task
+    raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
+
+
+def _validate_goal_scope(db: Session, goal: GoalORM, user_id: UUID, team_id: UUID | None, rid: str) -> None:
+    if team_id is None:
+        if goal.user_id != user_id:
+            raise ApiError(400, code="validation", message="Goal does not belong to this user", request_id=rid)
+    else:
+        if goal.team_id != team_id:
+            raise ApiError(400, code="validation", message="Goal does not belong to this team", request_id=rid)
+        _ensure_team_member(db, team_id, user_id, rid)
+
+
+def _validate_assignee(db: Session, team_id: UUID | None, assignee_user_id: UUID | None, rid: str) -> None:
+    if team_id is None or assignee_user_id is None:
+        return
+    _ensure_team_member(db, team_id, assignee_user_id, rid)
+
+
+@router.post("/goals", response_model=Goal, status_code=201)
+def create_goal(
     request: Request,
+    body: GoalCreateRequest,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-) -> ResolutionCurrentResponse:
-    r = _active_resolution(db, user_id)
-    return ResolutionCurrentResponse(resolution=_resolution_out(r) if r else None)
-
-
-@router.post("/resolutions", response_model=Resolution, status_code=201)
-def resolutions_create(
-    request: Request,
-    body: ResolutionCreateRequest,
-    db: Annotated[Session, Depends(get_db)],
-    user_id: Annotated[UUID, Depends(current_user_id)],
-    posthog=Depends(get_posthog),
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> Resolution | Response:
+) -> Goal:
     rid = _rid(request)
-    replay = replay_if_exists(
-        db,
-        user_id=user_id,
-        idempotency_key=idempotency_key,
-        scope="resolution_create",
-    )
-    if replay is not None:
-        return replay
-    if _active_resolution(db, user_id):
-        raise ApiError(
-            409,
-            code="active_resolution_exists",
-            message="Active resolution already exists",
-            request_id=rid,
-        )
-    r = ResolutionORM(
-        user_id=user_id,
-        title=body.title,
-        detail=body.detail,
+    title = body.title.strip()
+    if body.team_id is not None:
+        _ensure_team_member(db, body.team_id, user_id, rid)
+    goal = GoalORM(
+        user_id=None if body.team_id else user_id,
+        team_id=body.team_id,
+        created_by_user_id=user_id,
+        title=title,
+        description=body.description,
         status="active",
-        week_1_plan_status="not_requested",
+        target_at=body.target_at,
+        metadata_json=body.metadata_json,
     )
-    db.add(r)
+    db.add(goal)
     db.flush()
     db.add(
         TransparencyORM(
             user_id=user_id,
-            action_type="resolution_created",
-            headline="Resolution created",
-            detail=body.title[:500],
+            action_type="goal_created",
+            headline="Goal created",
+            detail=title[:500],
         )
     )
     db.commit()
-    db.refresh(r)
-    out = _resolution_out(r)
-    if idempotency_key and len(idempotency_key) >= 8:
-        store(
-            db,
-            user_id=user_id,
-            idempotency_key=idempotency_key,
-            scope="resolution_create",
-            response_status=201,
-            body=out.model_dump(mode="json"),
-        )
-        db.commit()
-    if posthog is not None:
-        with new_context():
-            identify_context(str(user_id))
-            posthog.capture("resolution created", properties={"has_detail": bool(body.detail)})
-    return out
+    db.refresh(goal)
+    return _goal_out(goal)
 
 
-@router.get("/resolutions/{resolution_id}", response_model=Resolution)
-def resolutions_get(
+@router.get("/goals", response_model=GoalListResponse)
+def list_goals(
     request: Request,
-    resolution_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-) -> Resolution:
+    team_id: UUID | None = None,
+    status: str = "active",
+) -> GoalListResponse:
     rid = _rid(request)
-    r = db.get(ResolutionORM, resolution_id)
-    if r is None or r.user_id != user_id:
-        raise ApiError(404, code="not_found", message="Resolution not found", request_id=rid)
-    return _resolution_out(r)
+    if team_id is not None:
+        _ensure_team_member(db, team_id, user_id, rid)
+        query = select(GoalORM).where(GoalORM.team_id == team_id)
+    else:
+        query = select(GoalORM).where(GoalORM.user_id == user_id)
+    if status != "all":
+        query = query.where(GoalORM.status == status)
+    goals = db.scalars(query.order_by(GoalORM.created_at.desc())).all()
+    return GoalListResponse(goals=[_goal_out(goal) for goal in goals])
 
 
-@router.patch("/resolutions/{resolution_id}", response_model=Resolution)
-def resolutions_patch(
+@router.get("/goals/{goal_id}", response_model=Goal)
+def get_goal(
     request: Request,
-    resolution_id: UUID,
-    body: ResolutionPatchRequest,
+    goal_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-    posthog=Depends(get_posthog),
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> Resolution | Response:
-    rid = _rid(request)
-    replay = replay_if_exists(
-        db,
-        user_id=user_id,
-        idempotency_key=idempotency_key,
-        scope=f"resolution_patch:{resolution_id}",
-    )
-    if replay is not None:
-        return replay
-    r = db.get(ResolutionORM, resolution_id)
-    if r is None or r.user_id != user_id:
-        raise ApiError(404, code="not_found", message="Resolution not found", request_id=rid)
+) -> Goal:
+    return _goal_out(_get_goal_for_user(db, goal_id, user_id, _rid(request)))
+
+
+@router.patch("/goals/{goal_id}", response_model=Goal)
+def patch_goal(
+    request: Request,
+    goal_id: UUID,
+    body: GoalPatchRequest,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+) -> Goal:
+    goal = _get_goal_for_user(db, goal_id, user_id, _rid(request))
     if body.title is not None:
-        r.title = body.title
-    if body.detail is not None:
-        r.detail = body.detail
+        goal.title = body.title.strip()
+    if body.description is not None:
+        goal.description = body.description
+    if body.target_at is not None:
+        goal.target_at = body.target_at
+    if body.progress_summary is not None:
+        goal.progress_summary = body.progress_summary
+    if body.metadata_json is not None:
+        goal.metadata_json = body.metadata_json
     if body.status is not None:
-        r.status = body.status
-    r.updated_at = datetime.now(UTC)
+        goal.status = body.status
+        if body.status == "completed" and goal.completed_at is None:
+            goal.completed_at = datetime.now(UTC)
+    goal.updated_at = datetime.now(UTC)
     db.commit()
-    db.refresh(r)
-    out = _resolution_out(r)
-    if idempotency_key and len(idempotency_key) >= 8:
-        store(
-            db,
-            user_id=user_id,
-            idempotency_key=idempotency_key,
-            scope=f"resolution_patch:{resolution_id}",
-            response_status=200,
-            body=out.model_dump(mode="json"),
-        )
-        db.commit()
-    if posthog is not None and body.status is not None:
-        with new_context():
-            identify_context(str(user_id))
-            posthog.capture("resolution status updated", properties={"status": body.status})
-    return out
+    db.refresh(goal)
+    return _goal_out(goal)
 
 
-@router.post(
-    "/resolutions/{resolution_id}/generate-week-1",
-    response_model=GenerateWeek1Response,
-    status_code=202,
-)
-def resolutions_generate_week_1(
+@router.post("/goals/{goal_id}/complete", response_model=Goal)
+def complete_goal(
     request: Request,
-    resolution_id: UUID,
+    goal_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-    posthog=Depends(get_posthog),
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> GenerateWeek1Response | Response:
-    rid = _rid(request)
-    replay = replay_if_exists(
-        db,
-        user_id=user_id,
-        idempotency_key=idempotency_key,
-        scope=f"generate_week1:{resolution_id}",
-    )
-    if replay is not None:
-        return replay
-    r = db.get(ResolutionORM, resolution_id)
-    if r is None or r.user_id != user_id:
-        raise ApiError(404, code="not_found", message="Resolution not found", request_id=rid)
-    if r.week_1_plan_status == "ready":
-        raise ApiError(
-            409,
-            code="week1_already_generated",
-            message="Week-1 already generated",
-            request_id=rid,
-        )
-    if r.week_1_plan_status == "pending":
-        out = GenerateWeek1Response(week_1_plan_status="pending", job_id=None)
-        return out
-    # failed / not_requested → (re)enqueue
-    r.week_1_plan_status = "pending"
+) -> Goal:
+    goal = _get_goal_for_user(db, goal_id, user_id, _rid(request))
+    goal.status = "completed"
+    goal.completed_at = datetime.now(UTC)
+    goal.updated_at = datetime.now(UTC)
     db.commit()
-    tp = traceparent_from_context()
-    meta: dict[str, str] = {"request_id": rid}
-    if tp:
-        meta["traceparent"] = tp
-    job = task_queue().enqueue(
-        run_generate_week1,
-        str(resolution_id),
-        job_timeout=120,
-        meta=meta,
-    )
-    db.refresh(r)
-    out = GenerateWeek1Response(week_1_plan_status=r.week_1_plan_status, job_id=job.id)
-    if idempotency_key and len(idempotency_key) >= 8:
-        store(
-            db,
-            user_id=user_id,
-            idempotency_key=idempotency_key,
-            scope=f"generate_week1:{resolution_id}",
-            response_status=202,
-            body=out.model_dump(mode="json"),
-        )
-        db.commit()
-    if posthog is not None:
-        with new_context():
-            identify_context(str(user_id))
-            posthog.capture("week 1 plan requested", properties={"resolution_id": str(resolution_id)})
-    return out
-
-
-@router.get("/tasks/{task_id}", response_model=Task)
-def task_get(
-    request: Request,
-    task_id: UUID,
-    db: Annotated[Session, Depends(get_db)],
-    user_id: Annotated[UUID, Depends(current_user_id)],
-) -> Task:
-    rid = _rid(request)
-    t = db.get(TaskORM, task_id)
-    if t is None:
-        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
-    r = db.get(ResolutionORM, t.resolution_id)
-    if r is None or r.user_id != user_id:
-        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
-    return Task.model_validate(t)
-
-
-@router.patch("/tasks/{task_id}", response_model=Task)
-def task_patch(
-    request: Request,
-    task_id: UUID,
-    body: TaskPatchRequest,
-    db: Annotated[Session, Depends(get_db)],
-    user_id: Annotated[UUID, Depends(current_user_id)],
-    posthog=Depends(get_posthog),
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> Task | Response:
-    rid = _rid(request)
-    replay = replay_if_exists(
-        db,
-        user_id=user_id,
-        idempotency_key=idempotency_key,
-        scope=f"task_patch:{task_id}",
-    )
-    if replay is not None:
-        return replay
-    t = db.get(TaskORM, task_id)
-    if t is None:
-        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
-    r = db.get(ResolutionORM, t.resolution_id)
-    if r is None or r.user_id != user_id:
-        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
-    if body.title is not None:
-        t.title = body.title
-    if body.note is not None:
-        meta = dict(t.metadata_json or {})
-        if body.note == "":
-            meta.pop("note", None)
-        else:
-            meta["note"] = body.note
-        t.metadata_json = meta if meta else None
-    if body.sort_order is not None:
-        t.sort_order = body.sort_order
-    if body.status is not None:
-        if body.status == t.status:
-            pass
-        elif body.status == "completed":
-            t.status = "completed"
-        elif body.status == "skipped":
-            if t.status == "completed":
-                raise ApiError(
-                    400,
-                    code="invalid_state",
-                    message="Cannot skip a completed task",
-                    request_id=rid,
-                )
-            t.status = "skipped"
-        elif body.status == "open":
-            if t.status == "completed":
-                raise ApiError(
-                    400,
-                    code="invalid_state",
-                    message="Cannot reopen a completed task",
-                    request_id=rid,
-                )
-            t.status = "open"
-    db.commit()
-    db.refresh(t)
-    out = Task.model_validate(t)
-    if idempotency_key and len(idempotency_key) >= 8:
-        store(
-            db,
-            user_id=user_id,
-            idempotency_key=idempotency_key,
-            scope=f"task_patch:{task_id}",
-            response_status=200,
-            body=out.model_dump(mode="json"),
-        )
-        db.commit()
-    if posthog is not None:
-        with new_context():
-            identify_context(str(user_id))
-            posthog.capture("task updated", properties={"resolution_id": str(t.resolution_id)})
-    return out
-
-
-@router.get("/resolutions/{resolution_id}/tasks", response_model=TaskListResponse)
-def tasks_list(
-    request: Request,
-    resolution_id: UUID,
-    db: Annotated[Session, Depends(get_db)],
-    user_id: Annotated[UUID, Depends(current_user_id)],
-) -> TaskListResponse:
-    rid = _rid(request)
-    r = db.get(ResolutionORM, resolution_id)
-    if r is None or r.user_id != user_id:
-        raise ApiError(404, code="not_found", message="Resolution not found", request_id=rid)
-    tasks = db.scalars(
-        select(TaskORM).where(TaskORM.resolution_id == resolution_id).order_by(TaskORM.sort_order)
-    ).all()
-    return TaskListResponse(tasks=[Task.model_validate(t) for t in tasks])
+    db.refresh(goal)
+    return _goal_out(goal)
 
 
 @router.post("/tasks", response_model=Task, status_code=201)
-def tasks_create(
+def create_task(
     request: Request,
     body: TaskCreateRequest,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-    posthog=Depends(get_posthog),
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> Task | Response:
+) -> Task:
     rid = _rid(request)
-    replay = replay_if_exists(
-        db,
-        user_id=user_id,
-        idempotency_key=idempotency_key,
-        scope="task_create",
-    )
-    if replay is not None:
-        return replay
-
-    resolution: ResolutionORM | None
-    if body.resolution_id is not None:
-        resolution = db.get(ResolutionORM, body.resolution_id)
-        if resolution is None or resolution.user_id != user_id:
-            raise ApiError(404, code="not_found", message="Resolution not found", request_id=rid)
-        if resolution.status not in ("draft", "active"):
-            raise ApiError(
-                400,
-                code="invalid_state",
-                message="Cannot add tasks to an inactive resolution",
-                request_id=rid,
-            )
-    else:
-        resolution = _active_resolution(db, user_id)
-        if resolution is None:
-            # Preserve the old app behavior: quick tasks can be created directly
-            # from Home, even before a user explicitly creates their first goal.
-            resolution = ResolutionORM(
-                user_id=user_id,
-                title="Quick Tasks",
-                detail="Auto-created for quick task capture",
-                status="active",
-                week_1_plan_status="not_requested",
-            )
-            db.add(resolution)
-            db.flush()
-
+    team_id = body.team_id
+    if team_id is not None:
+        _ensure_team_member(db, team_id, user_id, rid)
+    goal = None
+    if body.goal_id is not None:
+        goal = _get_goal_for_user(db, body.goal_id, user_id, rid)
+        if team_id is None:
+            team_id = goal.team_id
+        _validate_goal_scope(db, goal, user_id, team_id, rid)
+    _validate_assignee(db, team_id, body.assignee_user_id, rid)
     max_sort = db.scalar(
-        select(func.max(TaskORM.sort_order)).where(TaskORM.resolution_id == resolution.id)
+        select(func.max(TaskORM.sort_order)).where(
+            TaskORM.user_id == (None if team_id else user_id),
+            TaskORM.team_id == team_id,
+        )
     )
-    sort_order = body.sort_order if body.sort_order is not None else int(max_sort or -1) + 1
-
-    metadata_json = {"note": body.note} if body.note else None
-    t = TaskORM(
-        resolution_id=resolution.id,
-        title=body.title,
+    task = TaskORM(
+        user_id=None if team_id else user_id,
+        team_id=team_id,
+        goal_id=body.goal_id,
+        created_by_user_id=user_id,
+        assignee_user_id=body.assignee_user_id,
+        title=body.title.strip(),
+        notes=body.notes,
         status="open",
-        sort_order=sort_order,
-        metadata_json=metadata_json,
+        priority=body.priority,
+        due_at=body.due_at,
+        due_window_starts_at=body.due_window_starts_at,
+        due_window_ends_at=body.due_window_ends_at,
+        sort_order=body.sort_order if body.sort_order is not None else int(max_sort or -1) + 1,
+        source="manual",
+        metadata_json=body.metadata_json,
     )
-    db.add(t)
+    db.add(task)
     db.flush()
     db.add(
         TransparencyORM(
             user_id=user_id,
             action_type="task_created",
             headline="Task added",
-            detail=body.title[:500],
+            detail=task.title[:500],
         )
     )
     db.commit()
-    db.refresh(t)
-    out = Task.model_validate(t)
-    if idempotency_key and len(idempotency_key) >= 8:
-        store(
-            db,
-            user_id=user_id,
-            idempotency_key=idempotency_key,
-            scope="task_create",
-            response_status=201,
-            body=out.model_dump(mode="json"),
-        )
-        db.commit()
-    if posthog is not None:
-        with new_context():
-            identify_context(str(user_id))
-            posthog.capture("task created", properties={"resolution_id": str(resolution.id)})
-    return out
+    db.refresh(task)
+    return _task_out(task)
+
+
+@router.get("/tasks", response_model=TaskListResponse)
+def list_tasks(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+    team_id: UUID | None = None,
+    goal_id: UUID | None = None,
+    status: str = "open",
+) -> TaskListResponse:
+    rid = _rid(request)
+    if team_id is not None:
+        _ensure_team_member(db, team_id, user_id, rid)
+        query = select(TaskORM).where(TaskORM.team_id == team_id)
+    else:
+        query = select(TaskORM).where(TaskORM.user_id == user_id)
+    if goal_id is not None:
+        query = query.where(TaskORM.goal_id == goal_id)
+    if status != "all":
+        query = query.where(TaskORM.status == status)
+    tasks = db.scalars(query.order_by(TaskORM.sort_order, TaskORM.created_at.desc())).all()
+    return TaskListResponse(tasks=[_task_out(task) for task in tasks])
+
+
+@router.get("/goals/{goal_id}/tasks", response_model=TaskListResponse)
+def list_goal_tasks(
+    request: Request,
+    goal_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+    status: str = "open",
+) -> TaskListResponse:
+    _get_goal_for_user(db, goal_id, user_id, _rid(request))
+    query = select(TaskORM).where(TaskORM.goal_id == goal_id)
+    if status != "all":
+        query = query.where(TaskORM.status == status)
+    tasks = db.scalars(query.order_by(TaskORM.sort_order, TaskORM.created_at.desc())).all()
+    return TaskListResponse(tasks=[_task_out(task) for task in tasks])
+
+
+@router.get("/tasks/{task_id}", response_model=Task)
+def get_task(
+    request: Request,
+    task_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+) -> Task:
+    return _task_out(_get_task_for_user(db, task_id, user_id, _rid(request)))
+
+
+@router.patch("/tasks/{task_id}", response_model=Task)
+def patch_task(
+    request: Request,
+    task_id: UUID,
+    body: TaskPatchRequest,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+) -> Task:
+    rid = _rid(request)
+    task = _get_task_for_user(db, task_id, user_id, rid)
+    if body.goal_id is not None:
+        goal = _get_goal_for_user(db, body.goal_id, user_id, rid)
+        _validate_goal_scope(db, goal, user_id, task.team_id, rid)
+        task.goal_id = body.goal_id
+    if body.assignee_user_id is not None:
+        _validate_assignee(db, task.team_id, body.assignee_user_id, rid)
+        task.assignee_user_id = body.assignee_user_id
+    if body.title is not None:
+        task.title = body.title.strip()
+    if body.notes is not None:
+        task.notes = body.notes
+    if body.priority is not None:
+        task.priority = body.priority
+    if body.due_at is not None:
+        task.due_at = body.due_at
+    if body.due_window_starts_at is not None:
+        task.due_window_starts_at = body.due_window_starts_at
+    if body.due_window_ends_at is not None:
+        task.due_window_ends_at = body.due_window_ends_at
+    if body.sort_order is not None:
+        task.sort_order = body.sort_order
+    if body.metadata_json is not None:
+        task.metadata_json = body.metadata_json
+    if body.status is not None:
+        task.status = body.status
+        if body.status == "completed":
+            task.completed_at = task.completed_at or datetime.now(UTC)
+            task.completed_by_user_id = user_id
+        elif body.status == "open":
+            task.completed_at = None
+            task.completed_by_user_id = None
+    task.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(task)
+    return _task_out(task)
 
 
 @router.post("/tasks/{task_id}/complete", response_model=Task)
-def tasks_complete(
+def complete_task(
     request: Request,
     task_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-    posthog=Depends(get_posthog),
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> Task | Response:
-    rid = _rid(request)
-    replay = replay_if_exists(
-        db,
-        user_id=user_id,
-        idempotency_key=idempotency_key,
-        scope=f"task_complete:{task_id}",
-    )
-    if replay is not None:
-        return replay
-    t = db.get(TaskORM, task_id)
-    if t is None:
-        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
-    r = db.get(ResolutionORM, t.resolution_id)
-    if r is None or r.user_id != user_id:
-        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
-    t.status = "completed"
-    db.commit()
-    db.refresh(t)
-    out = Task.model_validate(t)
-    if idempotency_key and len(idempotency_key) >= 8:
-        store(
-            db,
+) -> Task:
+    task = _get_task_for_user(db, task_id, user_id, _rid(request))
+    task.status = "completed"
+    task.completed_at = datetime.now(UTC)
+    task.completed_by_user_id = user_id
+    task.updated_at = datetime.now(UTC)
+    db.add(
+        TransparencyORM(
             user_id=user_id,
-            idempotency_key=idempotency_key,
-            scope=f"task_complete:{task_id}",
-            response_status=200,
-            body=out.model_dump(mode="json"),
+            action_type="task_completed",
+            headline="Task completed",
+            detail=task.title[:500],
         )
-        db.commit()
-    if posthog is not None:
-        with new_context():
-            identify_context(str(user_id))
-            posthog.capture("task completed", properties={"resolution_id": str(t.resolution_id)})
-    return out
+    )
+    if task.goal_id is not None:
+        now = datetime.now(UTC)
+        notification = NotificationORM(
+            user_id=user_id,
+            team_id=task.team_id,
+            goal_id=task.goal_id,
+            task_id=task.id,
+            kind="goal_progress",
+            title="Goal progressed",
+            body=f"You completed: {task.title}",
+            status="pending",
+            payload_json={
+                "type": "goal_progress",
+                "goal_id": str(task.goal_id),
+                "task_id": str(task.id),
+            },
+        )
+        db.add(notification)
+        db.flush()
+        settings = get_settings()
+        tokens = db.scalars(
+            select(DevicePushToken).where(
+                DevicePushToken.user_id == user_id,
+                DevicePushToken.invalidated_at.is_(None),
+            )
+        ).all()
+        if settings.notifications_enabled and tokens:
+            result = send_expo_push_batch(
+                db,
+                settings,
+                user_id,
+                [
+                    {
+                        "to": token.expo_push_token,
+                        "title": notification.title,
+                        "body": notification.body,
+                        "sound": "default",
+                        "data": notification.payload_json,
+                    }
+                    for token in tokens
+                ],
+            )
+            if result.ok:
+                notification.status = "sent"
+                notification.sent_at = now
+    db.commit()
+    db.refresh(task)
+    return _task_out(task)
 
 
-@router.post("/tasks/{task_id}/skip", response_model=Task)
-def tasks_skip(
+@router.post("/tasks/{task_id}/reopen", response_model=Task)
+def reopen_task(
     request: Request,
     task_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-    posthog=Depends(get_posthog),
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> Task | Response:
-    rid = _rid(request)
-    replay = replay_if_exists(
-        db,
-        user_id=user_id,
-        idempotency_key=idempotency_key,
-        scope=f"task_skip:{task_id}",
-    )
-    if replay is not None:
-        return replay
-    t = db.get(TaskORM, task_id)
-    if t is None:
-        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
-    r = db.get(ResolutionORM, t.resolution_id)
-    if r is None or r.user_id != user_id:
-        raise ApiError(404, code="not_found", message="Task not found", request_id=rid)
-    if t.status == "skipped":
-        out = Task.model_validate(t)
-    elif t.status == "completed":
-        raise ApiError(400, code="invalid_state", message="Cannot skip a completed task", request_id=rid)
-    else:
-        t.status = "skipped"
-        db.commit()
-        db.refresh(t)
-        out = Task.model_validate(t)
-    if idempotency_key and len(idempotency_key) >= 8:
-        store(
-            db,
-            user_id=user_id,
-            idempotency_key=idempotency_key,
-            scope=f"task_skip:{task_id}",
-            response_status=200,
-            body=out.model_dump(mode="json"),
-        )
-        db.commit()
-    if posthog is not None:
-        with new_context():
-            identify_context(str(user_id))
-            posthog.capture("task skipped", properties={"resolution_id": str(t.resolution_id)})
-    return out
+) -> Task:
+    task = _get_task_for_user(db, task_id, user_id, _rid(request))
+    task.status = "open"
+    task.completed_at = None
+    task.completed_by_user_id = None
+    task.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(task)
+    return _task_out(task)
 
 
-@router.get("/interventions/current", response_model=InterventionCurrentResponse)
-def interventions_current(
-    request: Request,
+@router.get("/notifications", response_model=CompanionNotificationListResponse)
+def list_notifications(
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-) -> InterventionCurrentResponse:
-    iv = db.scalars(
-        select(InterventionORM)
-        .where(InterventionORM.user_id == user_id, InterventionORM.status == "pending")
-        .order_by(InterventionORM.created_at.desc())
-    ).first()
-    if iv is None:
-        return InterventionCurrentResponse(intervention=None)
-    return InterventionCurrentResponse(
-        intervention=Intervention.model_validate(iv),
-    )
+    limit: int = 50,
+) -> CompanionNotificationListResponse:
+    rows = db.scalars(
+        select(NotificationORM)
+        .where(NotificationORM.user_id == user_id)
+        .order_by(NotificationORM.created_at.desc())
+        .limit(max(1, min(limit, 100)))
+    ).all()
+    return CompanionNotificationListResponse(notifications=[CompanionNotification.model_validate(row) for row in rows])
 
 
-@router.post("/interventions/{intervention_id}/approve", response_model=Intervention)
-def interventions_approve(
+@router.get("/interventions", response_model=InterventionListResponse)
+def list_interventions(
+    db: Annotated[Session, Depends(get_db)],
+    user_id: Annotated[UUID, Depends(current_user_id)],
+    status: str = "pending",
+) -> InterventionListResponse:
+    query = select(InterventionORM).where(InterventionORM.user_id == user_id)
+    if status != "all":
+        query = query.where(InterventionORM.status == status)
+    rows = db.scalars(query.order_by(InterventionORM.created_at.desc())).all()
+    return InterventionListResponse(interventions=[Intervention.model_validate(row) for row in rows])
+
+
+@router.post("/interventions/{intervention_id}/resolve", response_model=Intervention)
+def resolve_intervention(
     request: Request,
     intervention_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-    posthog=Depends(get_posthog),
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> Intervention | Response:
+) -> Intervention:
     rid = _rid(request)
-    replay = replay_if_exists(
-        db,
-        user_id=user_id,
-        idempotency_key=idempotency_key,
-        scope=f"intervention_approve:{intervention_id}",
-    )
-    if replay is not None:
-        return replay
-    iv = db.get(InterventionORM, intervention_id)
-    if iv is None or iv.user_id != user_id:
+    row = db.get(InterventionORM, intervention_id)
+    if row is None or row.user_id != user_id:
         raise ApiError(404, code="not_found", message="Intervention not found", request_id=rid)
-    if iv.status != "pending":
-        raise ApiError(
-            400,
-            code="invalid_state",
-            message="Intervention is not pending",
-            request_id=rid,
-        )
-    iv.status = "approved"
-    iv.resolved_at = datetime.now(UTC)
-    db.add(
-        TransparencyORM(
-            user_id=user_id,
-            action_type="intervention_approved",
-            headline="Intervention approved",
-            detail=None,
-        )
-    )
+    row.status = "resolved"
+    row.resolved_at = datetime.now(UTC)
     db.commit()
-    db.refresh(iv)
-    out = Intervention.model_validate(iv)
-    if idempotency_key and len(idempotency_key) >= 8:
-        store(
-            db,
-            user_id=user_id,
-            idempotency_key=idempotency_key,
-            scope=f"intervention_approve:{intervention_id}",
-            response_status=200,
-            body=out.model_dump(mode="json"),
-        )
-        db.commit()
-    if posthog is not None:
-        with new_context():
-            identify_context(str(user_id))
-            posthog.capture("intervention approved")
-    return out
+    db.refresh(row)
+    return Intervention.model_validate(row)
 
 
-@router.post("/interventions/{intervention_id}/dismiss", response_model=Intervention)
-def interventions_dismiss(
-    request: Request,
-    intervention_id: UUID,
-    db: Annotated[Session, Depends(get_db)],
-    user_id: Annotated[UUID, Depends(current_user_id)],
-    posthog=Depends(get_posthog),
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> Intervention | Response:
-    rid = _rid(request)
-    replay = replay_if_exists(
-        db,
-        user_id=user_id,
-        idempotency_key=idempotency_key,
-        scope=f"intervention_dismiss:{intervention_id}",
-    )
-    if replay is not None:
-        return replay
-    iv = db.get(InterventionORM, intervention_id)
-    if iv is None or iv.user_id != user_id:
-        raise ApiError(404, code="not_found", message="Intervention not found", request_id=rid)
-    if iv.status != "pending":
-        raise ApiError(
-            400,
-            code="invalid_state",
-            message="Intervention is not pending",
-            request_id=rid,
-        )
-    iv.status = "dismissed"
-    iv.resolved_at = datetime.now(UTC)
-    db.add(
-        TransparencyORM(
-            user_id=user_id,
-            action_type="intervention_dismissed",
-            headline="Intervention dismissed",
-            detail=None,
-        )
-    )
-    db.commit()
-    db.refresh(iv)
-    out = Intervention.model_validate(iv)
-    if idempotency_key and len(idempotency_key) >= 8:
-        store(
-            db,
-            user_id=user_id,
-            idempotency_key=idempotency_key,
-            scope=f"intervention_dismiss:{intervention_id}",
-            response_status=200,
-            body=out.model_dump(mode="json"),
-        )
-        db.commit()
-    if posthog is not None:
-        with new_context():
-            identify_context(str(user_id))
-            posthog.capture("intervention dismissed")
-    return out
-
-
-def _encode_cursor(created_at: datetime, eid: UUID) -> str:
-    raw = json.dumps({"t": created_at.isoformat(), "id": str(eid)})
-    return base64.urlsafe_b64encode(raw.encode()).decode()
-
-
-def _decode_cursor(cur: str | None) -> tuple[datetime, UUID] | None:
-    if not cur:
-        return None
-    try:
-        raw = base64.urlsafe_b64decode(cur.encode()).decode()
-        d = json.loads(raw)
-        return datetime.fromisoformat(d["t"]), UUID(d["id"])
-    except (ValueError, json.JSONDecodeError, KeyError):
-        return None
-
-
-@router.get("/transparency-log/{entry_id}", response_model=TransparencyEntry)
-def transparency_entry_get(
-    request: Request,
-    entry_id: UUID,
-    db: Annotated[Session, Depends(get_db)],
-    user_id: Annotated[UUID, Depends(current_user_id)],
-) -> TransparencyEntry:
-    rid = _rid(request)
-    e = db.get(TransparencyORM, entry_id)
-    if e is None or e.user_id != user_id:
-        raise ApiError(404, code="not_found", message="Entry not found", request_id=rid)
-    return TransparencyEntry.model_validate(e)
-
-
-@router.get("/transparency-log", response_model=TransparencyLogPage)
-def transparency_list(
+@router.get("/transparency", response_model=TransparencyLogPage)
+def transparency_log(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
     cursor: str | None = None,
     limit: int = 20,
-    action_type: str | None = None,
 ) -> TransparencyLogPage:
     rid = _rid(request)
     if limit < 1 or limit > 100:
         raise ApiError(400, code="validation", message="limit must be 1-100", request_id=rid)
-    q = select(TransparencyORM).where(TransparencyORM.user_id == user_id)
-    if action_type:
-        q = q.where(TransparencyORM.action_type == action_type)
-    c = _decode_cursor(cursor)
-    if c:
-        t0, id0 = c
-        q = q.where(
-            (TransparencyORM.created_at < t0)
-            | ((TransparencyORM.created_at == t0) & (TransparencyORM.id < id0))
+    query = select(TransparencyORM).where(TransparencyORM.user_id == user_id)
+    decoded = decode_cursor(cursor)
+    if decoded:
+        t0, id0 = decoded
+        query = query.where(
+            (TransparencyORM.created_at < t0) | ((TransparencyORM.created_at == t0) & (TransparencyORM.id < id0))
         )
-    q = q.order_by(TransparencyORM.created_at.desc(), TransparencyORM.id.desc()).limit(limit + 1)
-    rows = list(db.scalars(q).all())
+    rows = list(
+        db.scalars(query.order_by(TransparencyORM.created_at.desc(), TransparencyORM.id.desc()).limit(limit + 1)).all()
+    )
     has_next = len(rows) > limit
     rows = rows[:limit]
-    items = [TransparencyEntry.model_validate(x) for x in rows]
-    next_cursor = None
-    if has_next and rows:
-        last = rows[-1]
-        next_cursor = _encode_cursor(last.created_at, last.id)
-    return TransparencyLogPage(items=items, next_cursor=next_cursor)
+    next_cursor = encode_cursor(rows[-1].created_at, rows[-1].id) if has_next and rows else None
+    return TransparencyLogPage(
+        items=[TransparencyEntry.model_validate(row) for row in rows],
+        next_cursor=next_cursor,
+    )
 
 
 @router.post("/devices/push-token", status_code=204, response_class=Response)
-def devices_push_token(
-    request: Request,
+def register_push_token(
     body: PushTokenRegisterRequest,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> Response:
-    rid = _rid(request)
-    if body.platform not in ("android", "ios"):
-        raise ApiError(
-            400,
-            code="validation",
-            message="platform must be android or ios",
-            request_id=rid,
-        )
     existing = db.scalar(
         select(DevicePushToken).where(
             DevicePushToken.user_id == user_id,
             DevicePushToken.expo_push_token == body.expo_push_token,
         )
     )
-    if existing:
-        existing.platform = body.platform
-        existing.device_id = body.device_id
-        existing.invalidated_at = None
-        existing.created_at = datetime.now(UTC)
-    else:
+    if existing is None:
         db.add(
             DevicePushToken(
                 user_id=user_id,
@@ -793,25 +581,27 @@ def devices_push_token(
                 device_id=body.device_id,
             )
         )
+    else:
+        existing.invalidated_at = None
+        existing.platform = body.platform
+        existing.device_id = body.device_id
     db.commit()
     return Response(status_code=204)
 
 
 @router.delete("/devices/push-token", status_code=204, response_class=Response)
-def devices_push_token_delete(
-    request: Request,
+def delete_push_token(
+    body: PushTokenRegisterRequest,
     db: Annotated[Session, Depends(get_db)],
     user_id: Annotated[UUID, Depends(current_user_id)],
-    body: PushTokenRegisterRequest = Body(...),
 ) -> Response:
-    rid = _rid(request)
     row = db.scalar(
         select(DevicePushToken).where(
             DevicePushToken.user_id == user_id,
             DevicePushToken.expo_push_token == body.expo_push_token,
         )
     )
-    if row:
-        db.delete(row)
+    if row is not None:
+        row.invalidated_at = datetime.now(UTC)
         db.commit()
     return Response(status_code=204)
